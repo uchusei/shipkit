@@ -1,2 +1,2 @@
-# shipkit
-A tool for shipping projects and products.
+# Shipkit
+A Product Owner tool for shipping projects and products.
