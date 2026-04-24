@@ -155,12 +155,21 @@
 
   html {
     scroll-behavior: smooth;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
   }
 
   body {
     @apply font-sans text-foreground antialiased;
     margin: 0;
     min-height: 100vh;
+    scrollbar-width: none;
     background:
       radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 24%),
       radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 12%, transparent), transparent 18%),
@@ -371,7 +380,7 @@
   }
 
   .floating-window-header {
-    @apply flex items-center justify-between gap-3 border-b border-border px-4 py-3;
+    @apply flex items-center justify-between gap-3 px-4 py-3;
     cursor: grab;
   }
 

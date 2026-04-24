@@ -48,6 +48,8 @@ export function exportPdfDocument(
   fileName: string,
   title: string,
   sections: ExportSection[],
+  metaLines: string[] = [],
+  emptyText = "Pending content.",
 ) {
   const html = `<!doctype html>
   <html lang="en">
@@ -80,7 +82,13 @@ export function exportPdfDocument(
           font-size: 28px;
           line-height: 1.1;
         }
+        .header-meta-stack {
+          margin-top: 12px;
+          display: grid;
+          gap: 4px;
+        }
         .meta {
+          margin-bottom: 14px;
           font-family: "SF Mono", "JetBrains Mono", monospace;
           color: var(--muted);
           font-size: 12px;
@@ -88,7 +96,8 @@ export function exportPdfDocument(
           text-transform: uppercase;
         }
         section {
-          break-inside: avoid;
+          break-inside: auto;
+          page-break-inside: auto;
           margin-bottom: 28px;
         }
         h2 {
@@ -96,6 +105,8 @@ export function exportPdfDocument(
           font-size: 16px;
           line-height: 1.3;
           letter-spacing: 0.01em;
+          break-after: avoid;
+          page-break-after: avoid;
         }
         p {
           margin: 0 0 12px;
@@ -106,6 +117,71 @@ export function exportPdfDocument(
         }
         li {
           margin-bottom: 4px;
+        }
+        hr {
+          border: 0;
+          border-top: 1px solid var(--border);
+          margin: 20px 0;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 0 0 18px;
+          font-size: 14px;
+        }
+        th, td {
+          border: 1px solid var(--border);
+          padding: 10px 12px;
+          text-align: left;
+          vertical-align: top;
+        }
+        th {
+          background: #f8fafc;
+          font-weight: 600;
+        }
+        .task-list {
+          list-style: none;
+          padding-left: 0;
+        }
+        .task-list li {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+        }
+        .task-box {
+          flex: 0 0 auto;
+          width: 16px;
+          height: 16px;
+          margin-top: 4px;
+          border: 1.5px solid #9ca3af;
+          border-radius: 4px;
+        }
+        .task-box.checked {
+          border-color: #111111;
+          background: #111111;
+          position: relative;
+        }
+        .task-box.checked::after {
+          content: "";
+          position: absolute;
+          left: 4px;
+          top: 1px;
+          width: 4px;
+          height: 8px;
+          border: solid #ffffff;
+          border-width: 0 2px 2px 0;
+          transform: rotate(45deg);
+        }
+        code {
+          padding: 0.15em 0.35em;
+          border-radius: 6px;
+          background: #f3f4f6;
+          font-family: "SF Mono", "JetBrains Mono", monospace;
+          font-size: 0.92em;
+        }
+        a {
+          color: inherit;
+          text-decoration: underline;
         }
         .empty {
           color: var(--muted);
@@ -122,22 +198,24 @@ export function exportPdfDocument(
       <header>
         <div class="meta">${escapeHtml(fileName)}.pdf</div>
         <h1>${escapeHtml(title)}</h1>
+        ${
+          metaLines.length > 0
+            ? `<div class="header-meta-stack">${metaLines
+                .map((line) => `<div>${escapeHtml(line)}</div>`)
+                .join("")}</div>`
+            : ""
+        }
       </header>
       ${sections
         .map(
           (section) => `
             <section>
-              <h2>${escapeHtml(section.title)}</h2>
-              ${richTextToHtml(section.body)}
+              ${section.title ? `<h2>${escapeHtml(section.title)}</h2>` : ""}
+              ${richTextToHtml(section.body, emptyText)}
             </section>
           `,
         )
         .join("")}
-      <script>
-        window.onload = () => {
-          window.print();
-        };
-      </script>
     </body>
   </html>`;
 
@@ -167,10 +245,18 @@ export function exportPdfDocument(
     }
 
     frameWindow.onafterprint = cleanup;
-    window.setTimeout(() => {
+
+    const printFrame = () => {
       frameWindow.focus();
       frameWindow.print();
-    }, 180);
+    };
+
+    if (frameWindow.document.fonts?.ready) {
+      frameWindow.document.fonts.ready.then(() => window.setTimeout(printFrame, 80));
+      return;
+    }
+
+    window.setTimeout(printFrame, 180);
   };
 
   document.body.appendChild(iframe);
@@ -179,11 +265,11 @@ export function exportPdfDocument(
   return true;
 }
 
-function richTextToHtml(text: string) {
+function richTextToHtml(text: string, emptyText = "Pending content.") {
   const trimmed = text.trim();
 
   if (!trimmed) {
-    return '<p class="empty">Pending content.</p>';
+    return emptyText ? `<p class="empty">${escapeHtml(emptyText)}</p>` : "";
   }
 
   const blocks = trimmed.split(/\n{2,}/);
@@ -192,22 +278,112 @@ function richTextToHtml(text: string) {
       const lines = block.split("\n").filter(Boolean);
       const isBulletList = lines.every((line) => /^[-*]\s+/.test(line.trim()));
       const isOrderedList = lines.every((line) => /^\d+\.\s+/.test(line.trim()));
+      const isTaskList = lines.every((line) => /^-\s+\[(x|X| )\]\s+/.test(line.trim()));
+      const isMarkdownTable =
+        lines.length >= 2 &&
+        lines.every((line) => /^\|.*\|$/.test(line.trim())) &&
+        /^\|(?:\s*:?-{3,}:?\s*\|)+$/.test(lines[1].trim());
+
+      if (lines.length === 1 && lines[0].trim() === "---") {
+        return "<hr />";
+      }
+
+      if (lines.length === 1 && /^#{1,6}\s+/.test(lines[0].trim())) {
+        const [, hashes, heading] = lines[0].trim().match(/^(#{1,6})\s+(.+)$/) ?? [];
+
+        if (hashes && heading) {
+          const level = Math.min(hashes.length + 1, 6);
+          return `<h${level}>${renderInlineMarkdown(heading)}</h${level}>`;
+        }
+      }
+
+      if (
+        lines.length === 1 &&
+        (/^\d+\.\s+\S/.test(lines[0].trim()) ||
+          /^PHASE\s+\d+\s+—\s+/.test(lines[0].trim()) ||
+          lines[0].trim() === "PIPELINE RULES" ||
+          lines[0].trim() === "MINIMUM SUCCESS STATE")
+      ) {
+        return `<h2>${renderInlineMarkdown(lines[0].trim())}</h2>`;
+      }
+
+      if (isMarkdownTable) {
+        const headers = splitMarkdownTableRow(lines[0]);
+        const rows = lines.slice(2).map(splitMarkdownTableRow);
+
+        return `<table><thead><tr>${headers
+          .map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`)
+          .join("")}</tr></thead><tbody>${rows
+          .map(
+            (row) =>
+              `<tr>${row
+                .map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`)
+                .join("")}</tr>`,
+          )
+          .join("")}</tbody></table>`;
+      }
+
+      if (isTaskList) {
+        return `<ul class="task-list">${lines
+          .map((line) => {
+            const match = line.trim().match(/^-\s+\[(x|X| )\]\s+(.+)$/);
+            const checked = match?.[1]?.toLowerCase() === "x";
+            const text = match?.[2] ?? line.trim();
+            return `<li><span class="task-box${checked ? " checked" : ""}"></span><span>${renderInlineMarkdown(text)}</span></li>`;
+          })
+          .join("")}</ul>`;
+      }
 
       if (isBulletList) {
         return `<ul>${lines
-          .map((line) => `<li>${escapeHtml(line.replace(/^[-*]\s+/, ""))}</li>`)
+          .map((line) => `<li>${renderInlineMarkdown(line.replace(/^[-*]\s+/, ""))}</li>`)
           .join("")}</ul>`;
       }
 
       if (isOrderedList) {
         return `<ol>${lines
-          .map((line) => `<li>${escapeHtml(line.replace(/^\d+\.\s+/, ""))}</li>`)
+          .map((line) => `<li>${renderInlineMarkdown(line.replace(/^\d+\.\s+/, ""))}</li>`)
           .join("")}</ol>`;
       }
 
-      return `<p>${lines.map(escapeHtml).join("<br />")}</p>`;
+      return `<p>${lines.map(renderInlineMarkdown).join("<br />")}</p>`;
     })
     .join("");
+}
+
+function splitMarkdownTableRow(row: string) {
+  return row
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function renderInlineMarkdown(text: string) {
+  const tokens: string[] = [];
+  let output = escapeHtml(text);
+
+  output = output.replace(/`([^`]+)`/g, (_, code) => {
+    const token = `__TOKEN_${tokens.length}__`;
+    tokens.push(`<code>${escapeHtml(code)}</code>`);
+    return token;
+  });
+
+  output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+    const token = `__TOKEN_${tokens.length}__`;
+    tokens.push(`<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`);
+    return token;
+  });
+
+  output = output.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  output = output.replace(/(^|[\s(])\*([^*]+)\*(?=[\s).,;:]|$)/g, "$1<em>$2</em>");
+
+  tokens.forEach((tokenHtml, index) => {
+    output = output.replace(`__TOKEN_${index}__`, tokenHtml);
+  });
+
+  return output;
 }
 
 function escapeHtml(value: string) {

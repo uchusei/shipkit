@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   BookOpen,
@@ -36,12 +36,22 @@ import {
 } from "react-router-dom";
 import { Button, Checkbox, Field, Input, Panel, StatusPill, Textarea } from "@/components/ui";
 import {
+  README_DEFAULT_DOCUMENT,
   codeReviewSections,
-  helpDocuments,
+  frameworkDocuments,
   templates,
-  type HelpDocument,
+  type FrameworkDocument,
   type TemplateDefinition,
 } from "@/data/documents";
+import {
+  VIBE_CODING_BUILD_LOOP_GUIDANCE,
+  VIBE_CODING_PROJECT_SKELETON_GUIDANCE,
+  VIBE_CODING_CODEX_KICKOFF_PROMPT,
+  VIBE_CODING_DEPLOYMENT_GUIDANCE,
+  VIBE_CODING_WORKFLOW_GUIDANCE,
+  vibeCodingSteps,
+  type VibeCodingStepDefinition,
+} from "@/data/vibe-coding";
 import {
   downloadTextFile,
   exportPdfDocument,
@@ -51,7 +61,9 @@ import {
 
 type TemplateDraftSection = {
   id: string;
+  baseTitle: string;
   title: string;
+  baseHelpText: string;
   helpText: string;
   baseContent: string;
   content: string;
@@ -59,25 +71,33 @@ type TemplateDraftSection = {
 
 type TemplateDraft = {
   title: string;
+  version: string;
+  owner: string;
+  created: string;
+  lastUpdated: string;
   fileName: string;
+  baseDocumentContent?: string;
+  documentContent?: string;
   sections: TemplateDraftSection[];
   updatedAt: string;
 };
 
 type CodeReviewSectionDraft = {
   id: string;
+  baseTitle: string;
   title: string;
-  prompts: string[];
-  checked: boolean;
-  notes: string;
+  checklist: string;
   findings: string;
-  severity: "" | "critical" | "high" | "medium" | "low";
-  needsVerification: boolean;
+  checked: boolean;
 };
 
 type CodeReviewDraft = {
   title: string;
+  version: string;
+  owner: string;
+  lastChecked: string;
   fileName: string;
+  reviewScopePrompt: string;
   sections: CodeReviewSectionDraft[];
   updatedAt: string;
 };
@@ -97,6 +117,37 @@ type HelpDocDraft = {
   updatedAt: string;
 };
 
+type VibeCodingStepDraft = {
+  id: string;
+  baseTitle: string;
+  title: string;
+  tool: "ChatGPT" | "Codex";
+  goal: string;
+  requiredInputs: string[];
+  howToUse: string[];
+  artifactLabel: string;
+  artifactPrefix: string;
+  artifactTemplate: string;
+  artifactUsedFor: string;
+  outputPlaceholder: string;
+  basePrompt: string;
+  prompt: string;
+  notes: string;
+  completed: boolean;
+};
+
+type VibeCodingDraft = {
+  title: string;
+  version: string;
+  owner: string;
+  created: string;
+  lastUpdated: string;
+  kickoffPrompt: string;
+  executionNotes: string;
+  steps: VibeCodingStepDraft[];
+  updatedAt: string;
+};
+
 type FloatingPanelState = {
   mode: "docked" | "floating";
   x: number;
@@ -112,7 +163,149 @@ type FloatingPanelMap = Record<string, FloatingPanelState>;
 type ThemePreference = "system" | "light" | "dark";
 type EditorLayoutMode = "single" | "split";
 type EditorFontScale = "sm" | "md" | "lg";
-type TemplateFilter = "all" | "general" | "development" | "pipeline";
+type TemplateFilter = "all" | "development" | "pipeline";
+
+const DEV_PROJECT_VERSION_DEFAULT = "v0.1.0";
+
+const DEV_PROJECT_STEP_ONE_ADAPT_PROMPT = `Which sections should we keep?
+Which sections should be added?
+Which bullet points (IN MUST HAVE) within a section must be added?
+Which sections do we not need?
+Which bullet points (IN MUST HAVE) within a section should be removed?`;
+
+const DEV_PROJECT_SECTION_FILL_PROMPT = `Now we are structuring the Dev Project Master Document for
+this project.
+
+We will fill and formulate ONE section at a time.
+Now fill and formulate this section:
+
+[INPUT SECTION HERE]
+
+Context:
+[PASTE RELEVANT DECISIONS HERE OR WRITE "NONE"]
+
+(this one is used to inform the AI about other sections
+already done, context, decisions, constraints or other
+important information to note)
+
+Instructions:
+- Be strict, concrete, and minimal
+- Only include what can be directly inferred or has been
+decided
+- Do NOT expand scope beyond what is implied and what we
+have discussed
+- Prefer bullet points over paragraphs
+Requirements:
+- Fill and answer all items under "Must include"
+- If something is not applicable -> write "N/A"
+- If something important is missing for the section -> add
+this and mark it as "ADDED" with a short description on why
+you added it
+
+Constraints:
+- No fluff
+- No generic statements
+- No duplication
+- No hidden assumptions
+- No invented features, flows, or systems
+Consistency:
+- Ensure internal consistency within this section
+- Do NOT contradict provided context
+- If something is unclear -> mark it as "OPEN" instead of
+guessing or discussing
+Output:
+Return ONLY the filled section
+Do NOT:
+- invent scope
+- introduce new features
+- make product decisions not already implied
+Be opinionated only when choosing between obvious
+alternatives within the given constraints.`;
+
+const DEV_PROJECT_SYNC_PASS_PROMPT = `Review the full document for:
+- contradictions
+- duplicated logic
+- missing dependencies
+- inconsistencies between product, tech, and domain
+- missing sections
+- missing bulletpoint/bulletpoints in a section
+- something else? think about everything
+
+List issues only. Do not rewrite.`;
+
+const CODE_REVIEW_SCOPE_PROMPT_DEFAULT = `Review the code in [file, folder, or diff].
+
+For [Add your input here, example category "Correctness and bugs" and what to review]
+
+• Review [entire file / entire folder / changed lines only / PR diff]
+• Use surrounding code context where needed to understand behavior, dependencies, regressions, and integration risk
+• Infer the language, framework, runtime, architecture style, and patterns from the code unless explicitly provided
+• If context is missing, state what cannot be fully verified
+• Review both the changed code and the nearby code paths it can affect
+• Distinguish between issues introduced by the current change and pre-existing issues merely exposed by it
+
+Instructions:
+• Report only concrete, actionable issues supported by the code
+• Keep findings implementation-specific and grounded in actual code behavior
+• Do not invent behavior, intent, dependencies, or line numbers
+• Do not duplicate the same issue across categories or findings
+• Prefer reporting the root cause rather than downstream symptoms
+• Distinguish clearly between:
+– Confirmed issue
+– Needs verification
+– Pre-existing issue exposed by current change
+• Mark uncertain findings explicitly as: Needs verification
+• Consider both local defects and system-level / regression risks where visible
+• Prioritize exploitable, user-impacting, and high-confidence issues
+• Do not report purely hypothetical issues unless the code provides a concrete reason to suspect them
+• Do not report trivial style issues unless they materially affect correctness, security, performance, accessibility, maintainability, operability, or compliance
+• If exact line numbers are not visible, use the narrowest accurate line range possible
+• Call out missing dependencies required for confident review when relevant (e.g. config, env, schema, tests, infra, contracts, migrations, feature flags, deployment order, API contracts, schema expectations, serialization/deserialization boundaries, backward compatibility where relevant)
+• Call out where the change lacks tests for the risky behavior, but only when the missing test leaves important behavior unverified
+• Recommended fixes should be specific and proportionate to the issue.
+• Do not propose large rewrites unless the issue truly requires it.
+
+Prioritization:
+• Prioritize findings by severity: Critical, High, Medium, Low
+• Start with Critical findings, then High, then Medium, then Low
+• Within each severity, order findings by user impact and confidence
+
+Completion:
+• If no significant issues are found, state this explicitly. Do not manufacture findings to satisfy the review request.
+• End with:
+– Overall risk summary
+– Main problem patterns found
+– What could not be fully verified due to missing context
+
+Severity definitions:
+• Critical = exploitable security issue, data loss/corruption, auth bypass, production outage risk
+• High = likely user-facing breakage, major regression risk, unsafe behavior
+• Medium = correctness/maintainability/operability issue with realistic impact
+• Low = minor but real issue worth fixing
+
+
+Output:
+
+Review summary:
+– Overall risk summary:
+– Main problem patterns found:
+– What could not be fully verified due to missing context:
+– Reviewed file / folder / diff / changed lines:
+– Total findings by severity:
+– Final recommendation:
+
+For each finding:
+– Severity:
+– Confidence:
+– Change origin:
+– File:Line(s):
+– Issue:
+– Why it matters:
+– Impact:
+– Recommended fix:
+– Evidence / code reference:
+– Notes: (Optional: missing context, caveats, follow-up checks, or constraints)
+– Verification status: (Confirmed issue / Needs verification / Pre-existing issue exposed by current change)`;
 
 function App() {
   const [templateDrafts, setTemplateDrafts] = usePersistentState<Record<string, TemplateDraft>>(
@@ -126,6 +319,10 @@ function App() {
   const [helpDocDrafts, setHelpDocDrafts] = usePersistentState<Record<string, HelpDocDraft>>(
     "shipkit-help-doc-drafts-v1",
     {},
+  );
+  const [vibeCodingDraft, setVibeCodingDraft] = usePersistentState<VibeCodingDraft>(
+    "shipkit-vibe-coding-draft-v1",
+    createVibeCodingDraft(),
   );
   const [themePreference, setThemePreference] = usePersistentState<ThemePreference>(
     "shipkit-theme-preference-v1",
@@ -200,6 +397,17 @@ function App() {
             }
           />
           <Route
+            path="/vibe-coding"
+            element={
+              <VibeCodingPage
+                draft={vibeCodingDraft}
+                onChange={setVibeCodingDraft}
+                fontScale={editorFontScale}
+                onFontScaleChange={setEditorFontScale}
+              />
+            }
+          />
+          <Route
             path="/code-review"
             element={
               <CodeReviewPage
@@ -213,10 +421,12 @@ function App() {
             }
           />
           <Route
-            path="/help"
+            path="/frameworks"
             element={<HelpDocsLibrary helpDocDrafts={helpDocDrafts} onChange={setHelpDocDrafts} />}
           />
-          <Route path="/help/:docSlug" element={<Navigate to="/help" replace />} />
+          <Route path="/frameworks/:docSlug" element={<Navigate to="/frameworks" replace />} />
+          <Route path="/help" element={<Navigate to="/frameworks" replace />} />
+          <Route path="/help/:docSlug" element={<Navigate to="/frameworks" replace />} />
         </Routes>
       </main>
     </div>
@@ -252,8 +462,7 @@ function Sidebar({
             </Button>
           </div>
           <p className="mt-4 max-w-sm text-[0.98rem] leading-7 text-muted-foreground">
-            Open a template in the app, shape it into a project-specific document, and export
-            it as clean Markdown or PDF.
+            Emmas Shipkit for building and managing products.
           </p>
         </div>
 
@@ -263,19 +472,25 @@ function Sidebar({
               to="/templates"
               icon={<FolderKanban className="size-4" />}
               title="Templates"
-              description="Universal, Dev, and Pipeline docs"
+              description="My templates for product and development work."
+            />
+            <SidebarLink
+              to="/vibe-coding"
+              icon={<FilePenLine className="size-4" />}
+              title="Vibe Coding"
+              description="Guided ChatGPT to Codex workflow for shipping an MVP."
             />
             <SidebarLink
               to="/code-review"
               icon={<ClipboardCheck className="size-4" />}
               title="Code Review"
-              description="Code Review Checklist"
+              description="Code Review Checklist."
             />
             <SidebarLink
-              to="/help"
+              to="/frameworks"
               icon={<BookOpen className="size-4" />}
-              title="Help Docs"
-              description="AI input + product checklists"
+              title="Frameworks"
+              description="Product pressure-testing frameworks."
             />
           </nav>
         </div>
@@ -318,6 +533,53 @@ function Sidebar({
           </div>
         </div>
       </div>
+      <div className="mt-8 text-center text-xs text-muted-foreground">
+
+   <p>
+    Version:{" "}
+    <a
+      href="https://github.com/uchusei/shipkit"
+      target="_blank"
+      rel="noreferrer"
+      className="underline hover:text-foreground"
+    >
+      v0.1.0
+    </a>
+  </p>
+
+  <p>
+    Built by{" "}
+    <a
+      href="https://github.com/uchusei"
+      target="_blank"
+      rel="noreferrer"
+      className="underline hover:text-foreground"
+    >
+      uchusei
+    </a>{" "}
+    /{" "}
+    <a
+      href="https://wowen.se"
+      target="_blank"
+      rel="noreferrer"
+      className="underline hover:text-foreground"
+    >
+      WOWEN
+    </a>
+  </p>
+
+ <p className="mt-3">
+    Vibe Coding prompts based on:{" "}
+    <a
+      href="https://github.com/KhazP/vibe-coding-prompt-template/tree/main"
+      target="_blank"
+      rel="noreferrer"
+      className="block underline hover:text-foreground"
+    >
+      KhazP/vibe-coding-prompt-template
+    </a>
+  </p>
+</div>
     </aside>
   );
 }
@@ -390,7 +652,6 @@ function TemplateLibrary({
             label="Visible templates"
             options={[
               { value: "all", label: "All" },
-              { value: "general", label: "General" },
               { value: "development", label: "Development" },
               { value: "pipeline", label: "Pipeline" },
             ]}
@@ -404,7 +665,7 @@ function TemplateLibrary({
         {filteredTemplates.map((template, index) => {
           const draft = templateDrafts[template.slug];
           const customizedCount = draft
-            ? countCustomizedTemplateSections(normalizeTemplateDraft(template, draft))
+            ? countCustomizedTemplateDraft(template, normalizeTemplateDraft(template, draft))
             : 0;
 
           return (
@@ -472,7 +733,246 @@ function TemplateEditor({
     activeTemplate,
     templateDrafts[activeTemplate.slug] ?? createTemplateDraft(activeTemplate),
   );
-  const deferredDraft = useDeferredValue(draft);
+  const latestTemplateDraftRef = useRef(draft);
+  const isSingleDocumentTemplate = isSingleDocumentTemplateSlug(activeTemplate.slug);
+
+  useEffect(() => {
+    latestTemplateDraftRef.current = draft;
+  }, [draft]);
+
+  function updateDraft(updater: (current: TemplateDraft) => TemplateDraft) {
+    onChange((current) => {
+      const base = normalizeTemplateDraft(
+        activeTemplate,
+        current[activeTemplate.slug] ?? createTemplateDraft(activeTemplate),
+      );
+      const next = updater(base);
+      latestTemplateDraftRef.current = next;
+      return {
+        ...current,
+        [activeTemplate.slug]: {
+          ...next,
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }
+
+  if (isSingleDocumentTemplate) {
+    const resolvedTitle = draft.title.trim() || activeTemplate.name;
+    const templateMetaLines = createTemplateMetaLines(activeTemplate, draft);
+    const singleDocumentContent = getSingleDocumentContent(activeTemplate, draft);
+    const singleDocumentSections = getTemplateExportSections(activeTemplate, draft);
+    const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title, draft.version);
+
+    function handlePipelineExportMarkdown() {
+      const currentDraft = latestTemplateDraftRef.current;
+      const currentTitle = currentDraft.title.trim() || activeTemplate.name;
+      const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
+      const currentFileName = buildTemplateFileName(
+        activeTemplate,
+        currentDraft.title,
+        currentDraft.version,
+      );
+      const markdown = getTemplateExportMarkdown(activeTemplate, currentDraft, currentTitle, currentMetaLines);
+      downloadTextFile(`${currentFileName}.md`, markdown);
+    }
+
+    function handlePipelineExportPdf() {
+      const currentDraft = latestTemplateDraftRef.current;
+      const currentTitle = currentDraft.title.trim() || activeTemplate.name;
+      const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
+      const currentFileName = buildTemplateFileName(
+        activeTemplate,
+        currentDraft.title,
+        currentDraft.version,
+      );
+      exportPdfDocument(
+        currentFileName,
+        currentTitle,
+        getTemplateExportSections(activeTemplate, currentDraft),
+        currentMetaLines,
+        "",
+      );
+    }
+
+    return (
+      <div className="page-frame mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-6 md:px-6">
+        <PageHeader
+          eyebrow="Template editor"
+          title={activeTemplate.name}
+          description={activeTemplate.description}
+          actions={
+            <>
+              <Button variant="secondary" onClick={handlePipelineExportMarkdown}>
+                <Download className="size-4" />
+                Export Markdown
+              </Button>
+              <Button variant="primary" onClick={handlePipelineExportPdf}>
+                <FileDown className="size-4" />
+                Export PDF
+              </Button>
+            </>
+          }
+        />
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <Panel className="stagger-enter">
+            <div className="space-y-4">
+              <Field label="Headline">
+                <Input
+                  value={draft.title}
+                  onChange={(event) =>
+                    updateDraft((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder={activeTemplate.name}
+                />
+              </Field>
+              <Field label="Document">
+                <Textarea
+                  value={singleDocumentContent}
+                  onChange={(event) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      documentContent: event.target.value,
+                    }))
+                  }
+                  className={getEditorTextAreaClass(fontScale)}
+                  rows={34}
+                />
+              </Field>
+            </div>
+          </Panel>
+
+          <div className="sticky-stack-scroll space-y-4">
+            <Panel>
+              <div className="space-y-4">
+                <div>
+                  <div className="mono-label">Document settings</div>
+                  <h2 className="mt-2 text-lg font-semibold tracking-[0.005em]">
+                    File name and export
+                  </h2>
+                </div>
+
+                <Field
+                  label="Project name"
+                  hint="Used as the document title in live preview and exported documents."
+                >
+                  <Input
+                    placeholder={getTemplateDefaultProjectPrefix(activeTemplate)}
+                    value={draft.title}
+                    onChange={(event) =>
+                      updateDraft((current) => ({ ...current, title: event.target.value }))
+                    }
+                  />
+                </Field>
+
+                {activeTemplate.slug !== "readme-md" ? (
+                  <Field
+                    label="Document"
+                    hint="Fixed document label used in live preview and exported documents."
+                  >
+                    <Input value={activeTemplate.name} readOnly />
+                  </Field>
+                ) : null}
+
+                <Field
+                  label="Version"
+                  hint={`Shown in export metadata. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
+                >
+                  <Input
+                    placeholder={DEV_PROJECT_VERSION_DEFAULT}
+                    value={draft.version}
+                    onChange={(event) =>
+                      updateDraft((current) => ({ ...current, version: event.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field label="Owner" hint="Shown in live preview and exported documents.">
+                  <Input
+                    placeholder="Owner"
+                    value={draft.owner}
+                    onChange={(event) =>
+                      updateDraft((current) => ({ ...current, owner: event.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label="Created"
+                  hint="Use YYYY-MM-DD format, for example 2026-04-23."
+                >
+                  <Input
+                    type="date"
+                    value={draft.created}
+                    onChange={(event) =>
+                      updateDraft((current) => ({ ...current, created: event.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label="Last updated"
+                  hint="Use YYYY-MM-DD format, for example 2026-04-23."
+                >
+                  <Input
+                    type="date"
+                    value={draft.lastUpdated}
+                    onChange={(event) =>
+                      updateDraft((current) => ({ ...current, lastUpdated: event.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field
+                  label="File name"
+                  hint={`Generated automatically as ${resolvedFileName}.md / ${resolvedFileName}.pdf`}
+                >
+                  <Input value={resolvedFileName} readOnly />
+                </Field>
+
+                <div className="grid gap-2">
+                  <Button variant="primary" onClick={handlePipelineExportPdf}>
+                    <FileDown className="size-4" />
+                    Save PDF
+                  </Button>
+                  <Button variant="secondary" onClick={handlePipelineExportMarkdown}>
+                    <Download className="size-4" />
+                    Save Markdown
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => updateDraft(() => createTemplateDraft(activeTemplate))}
+                  >
+                    <RefreshCcw className="size-4" />
+                    Reset draft
+                  </Button>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel>
+              <DockedPanelHeader
+                title="Live Preview"
+                subtitle={resolvedFileName}
+              />
+              <div className="mt-4">
+                <DocumentPreview
+                  title={resolvedTitle}
+                  metaLines={templateMetaLines}
+                  sections={singleDocumentSections}
+                  fontScale={fontScale}
+                  emptyText=""
+                />
+              </div>
+            </Panel>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const panelIds = useMemo(
     () => [
       "template-sections",
@@ -492,39 +992,40 @@ function TemplateEditor({
     startDrag,
     startResize,
   } = usePanelWorkspace(panelIds);
+  const isDevProjectTemplate = activeTemplate.slug === "dev-project-master-document";
   const resolvedTitle = draft.title.trim() || activeTemplate.name;
-  const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title);
-  const markdown = generateTemplateMarkdown(resolvedTitle, draft.sections);
-
-  function updateDraft(updater: (current: TemplateDraft) => TemplateDraft) {
-    onChange((current) => {
-      const base = normalizeTemplateDraft(
-        activeTemplate,
-        current[activeTemplate.slug] ?? createTemplateDraft(activeTemplate),
-      );
-      const next = updater(base);
-      return {
-        ...current,
-        [activeTemplate.slug]: {
-          ...next,
-          updatedAt: new Date().toISOString(),
-        },
-      };
-    });
-  }
+  const templateMetaLines = createTemplateMetaLines(activeTemplate, draft);
+  const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title, draft.version);
+  const templatePreviewSections = getTemplateExportSections(activeTemplate, draft);
 
   function handleExportMarkdown() {
-    downloadTextFile(`${resolvedFileName}.md`, markdown);
+    const currentDraft = latestTemplateDraftRef.current;
+    const currentTitle = currentDraft.title.trim() || activeTemplate.name;
+    const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
+    const currentFileName = buildTemplateFileName(
+      activeTemplate,
+      currentDraft.title,
+      currentDraft.version,
+    );
+    const markdown = getTemplateExportMarkdown(activeTemplate, currentDraft, currentTitle, currentMetaLines);
+    downloadTextFile(`${currentFileName}.md`, markdown);
   }
 
   function handleExportPdf() {
+    const currentDraft = latestTemplateDraftRef.current;
+    const currentTitle = currentDraft.title.trim() || activeTemplate.name;
+    const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
+    const currentFileName = buildTemplateFileName(
+      activeTemplate,
+      currentDraft.title,
+      currentDraft.version,
+    );
     exportPdfDocument(
-      resolvedFileName,
-      resolvedTitle,
-      draft.sections.map((section) => ({
-        title: section.title,
-        body: section.content,
-      })),
+      currentFileName,
+      currentTitle,
+      getTemplateExportSections(activeTemplate, currentDraft),
+      currentMetaLines,
+      "",
     );
   }
 
@@ -542,7 +1043,9 @@ function TemplateEditor({
         ...current.sections,
         {
           id: createDraftSectionId("template-section"),
+          baseTitle: `New section ${current.sections.length + 1}`,
           title: `New section ${current.sections.length + 1}`,
+          baseHelpText: "",
           helpText: "Use this section for project-specific content that does not fit the base template.",
           baseContent: "",
           content: "",
@@ -551,9 +1054,45 @@ function TemplateEditor({
     }));
   }
 
+  function deleteTemplateSection(sectionId: string) {
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.filter((section) => section.id !== sectionId),
+    }));
+  }
+
+  function updateTemplateSectionTitle(sectionId: string, title: string) {
+    updateDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) =>
+        section.id === sectionId ? { ...section, title } : section,
+      ),
+    }));
+  }
+
   const dockedSections = draft.sections.filter(
     (section) => !isFloating(`template-section-${section.id}`),
   );
+  const syncPassContent = isDevProjectTemplate ? (
+    <div className="space-y-4">
+      <div>
+        <h3 className="mt-2 text-lg font-semibold tracking-[0.005em]">Sync Pass</h3>
+      </div>
+      <div className="surface-subtle px-4 py-4 text-sm leading-7 text-foreground-soft">
+        When all sections are done its time to review it and sync pass it.
+      </div>
+      <CopyPromptField
+        label="Review prompt"
+        buttonLabel="Copy prompt"
+        prompt={DEV_PROJECT_SYNC_PASS_PROMPT}
+      />
+      <div className="surface-subtle px-4 py-4 text-sm leading-7 text-foreground-soft">
+        When it is fully complete: use it as your foundation while executing the project - it
+        becomes your GOVERNING DOCUMENT for the entire project. Next steps: Does the project need
+        a pipeline, roadmap, requirements spec or anything else?
+      </div>
+    </div>
+  ) : null;
   const templateDocumentContent = (
     <div className="space-y-8">
       {draft.sections.map((section, index) => {
@@ -586,10 +1125,12 @@ function TemplateEditor({
               fontScale,
               displayMode: "inline",
               onTitleChange: (title) =>
+                updateTemplateSectionTitle(section.id, title),
+              onHelpTextChange: (helpText) =>
                 updateDraft((current) => ({
                   ...current,
                   sections: current.sections.map((item) =>
-                    item.id === section.id ? { ...item, title } : item,
+                    item.id === section.id ? { ...item, helpText } : item,
                   ),
                 })),
               onChange: (content) =>
@@ -599,6 +1140,7 @@ function TemplateEditor({
                     item.id === section.id ? { ...item, content } : item,
                   ),
                 })),
+              onDelete: () => deleteTemplateSection(section.id),
             })}
             {index < draft.sections.length - 1 ? <div className="soft-divider" /> : null}
           </section>
@@ -606,6 +1148,48 @@ function TemplateEditor({
       })}
     </div>
   );
+
+  const workflowSetupContent = isDevProjectTemplate ? (
+    <Panel>
+      <div className="space-y-4">
+        <div className="surface-subtle space-y-3 px-4 py-4">
+          <h2 className="text-lg font-semibold tracking-[0.005em]">Step 0</h2>
+          <p className="max-w-4xl text-sm leading-7 text-foreground-soft">
+            Discuss your idea/product. Start defining things. Once the project reaches a point
+            where we can formulate a Dev Project Master Document, move to the next step.
+          </p>
+        </div>
+
+        <div className="surface-subtle space-y-4 px-4 py-4">
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold tracking-[0.005em]">Step 1</h2>
+            <p className="max-w-4xl text-sm leading-7 text-foreground-soft">
+              Define and adapt this template so that it is strictly tailored to the specific
+              project you are working on. Iterate until it is perfect.
+            </p>
+          </div>
+
+        <CopyPromptField
+  label="Template adaptation prompt"
+  buttonLabel="Copy prompt"
+  prompt={DEV_PROJECT_STEP_ONE_ADAPT_PROMPT}
+  textareaHeight="min-h-[120px]"
+/>
+
+          <p className="max-w-4xl text-sm leading-7 text-foreground-soft">
+            When this is done you have a customized Dev Project Master Document to fill in. Take
+            each section separately and request output for each section:
+          </p>
+
+          <CopyPromptField
+            label="Section fill prompt"
+            buttonLabel="Copy prompt"
+            prompt={DEV_PROJECT_SECTION_FILL_PROMPT}
+          />
+        </div>
+      </div>
+    </Panel>
+  ) : null;
 
   const floatingPanels = [
     {
@@ -615,6 +1199,7 @@ function TemplateEditor({
         draft,
         onAdd: addTemplateSection,
         onJump: handleJumpToSection,
+        onDelete: deleteTemplateSection,
       }),
     },
     {
@@ -623,11 +1208,10 @@ function TemplateEditor({
       content: (
         <DocumentPreview
           title={resolvedTitle}
-          sections={deferredDraft.sections.map((section) => ({
-            title: section.title,
-            body: section.content,
-          }))}
+          metaLines={templateMetaLines}
+          sections={templatePreviewSections}
           fontScale={fontScale}
+          emptyText=""
         />
       ),
     },
@@ -649,10 +1233,12 @@ function TemplateEditor({
         fontScale,
         displayMode: "panel",
         onTitleChange: (title) =>
+          updateTemplateSectionTitle(section.id, title),
+        onHelpTextChange: (helpText) =>
           updateDraft((current) => ({
             ...current,
             sections: current.sections.map((item) =>
-              item.id === section.id ? { ...item, title } : item,
+              item.id === section.id ? { ...item, helpText } : item,
             ),
           })),
         onChange: (content) =>
@@ -662,6 +1248,7 @@ function TemplateEditor({
               item.id === section.id ? { ...item, content } : item,
             ),
           })),
+        onDelete: () => deleteTemplateSection(section.id),
       }),
     })),
   ].filter((panel) => isFloating(panel.id));
@@ -705,24 +1292,14 @@ function TemplateEditor({
                 draft,
                 onAdd: addTemplateSection,
                 onJump: handleJumpToSection,
+                onDelete: deleteTemplateSection,
               })}
             </div>
           </Panel>
         ) : null}
 
         <div className="space-y-4">
-          <Panel>
-            <div className="flex flex-col gap-3">
-              <div className="mono-label">Workflow guidance</div>
-              <div className="grid gap-3 md:grid-cols-3">
-                {activeTemplate.overview.map((item) => (
-                  <div key={item} className="surface-subtle stagger-enter px-4 py-3 text-sm leading-6 text-foreground-soft">
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Panel>
+          {workflowSetupContent}
 
           {layoutMode === "single" && !isFloating("template-document") ? (
             <Panel className="section-anchor stagger-enter">
@@ -772,6 +1349,13 @@ function TemplateEditor({
                             item.id === section.id ? { ...item, title } : item,
                           ),
                         })),
+                      onHelpTextChange: (helpText) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          sections: current.sections.map((item) =>
+                            item.id === section.id ? { ...item, helpText } : item,
+                          ),
+                        })),
                       onChange: (content) =>
                         updateDraft((current) => ({
                           ...current,
@@ -779,12 +1363,16 @@ function TemplateEditor({
                             item.id === section.id ? { ...item, content } : item,
                           ),
                         })),
+                      onDelete: () => deleteTemplateSection(section.id),
                     })}
                   </div>
                 </section>
               </Panel>
             );
           }))}
+          {syncPassContent ? (
+            <Panel className="section-anchor stagger-enter">{syncPassContent}</Panel>
+          ) : null}
         </div>
 
         <div className="sticky-stack-scroll space-y-4">
@@ -821,13 +1409,69 @@ function TemplateEditor({
 
               <Field
                 label="Project name"
-                hint="Used for project-specific document naming. Leave empty to keep the template default."
+                hint="Used as the document title in live preview and exported documents."
               >
                 <Input
                   placeholder={getTemplateDefaultProjectPrefix(activeTemplate)}
                   value={draft.title}
                   onChange={(event) =>
                     updateDraft((current) => ({ ...current, title: event.target.value }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Document"
+                hint="Fixed document label used in live preview and exported documents."
+              >
+                <Input value={activeTemplate.name} readOnly />
+              </Field>
+
+              <Field
+                label="Version"
+                hint={`Shown in live preview and export. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
+              >
+                <Input
+                  placeholder={DEV_PROJECT_VERSION_DEFAULT}
+                  value={draft.version}
+                  onChange={(event) =>
+                    updateDraft((current) => ({ ...current, version: event.target.value }))
+                  }
+                />
+              </Field>
+
+              <Field label="Owner" hint="Shown in live preview and exported documents.">
+                <Input
+                  placeholder="Owner"
+                  value={draft.owner}
+                  onChange={(event) =>
+                    updateDraft((current) => ({ ...current, owner: event.target.value }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Created"
+                hint="Use YYYY-MM-DD format, for example 2026-04-23."
+              >
+                <Input
+                  type="date"
+                  value={draft.created}
+                  onChange={(event) =>
+                    updateDraft((current) => ({ ...current, created: event.target.value }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Last updated"
+                hint="Use YYYY-MM-DD format, for example 2026-04-23."
+              >
+                <Input
+                  type="date"
+                  value={draft.lastUpdated}
+                  onChange={(event) =>
+                    updateDraft((current) => ({ ...current, lastUpdated: event.target.value }))
                   }
                 />
               </Field>
@@ -874,11 +1518,777 @@ function TemplateEditor({
               <div className="mt-4">
                 <DocumentPreview
                   title={resolvedTitle}
-                  sections={deferredDraft.sections.map((section) => ({
-                    title: section.title,
-                    body: section.content,
-                  }))}
+                  metaLines={templateMetaLines}
+                  sections={templatePreviewSections}
                   fontScale={fontScale}
+                  emptyText=""
+                />
+              </div>
+            </Panel>
+          ) : null}
+        </div>
+      </div>
+
+      <FloatingPanelLayer
+        panels={floatingPanels}
+        state={panels}
+        onDock={dockPanel}
+        onToggleLock={toggleLock}
+        onToggleExpanded={toggleExpanded}
+        onStartDrag={startDrag}
+        onStartResize={startResize}
+      />
+    </div>
+  );
+}
+
+function VibeCodingPage({
+  draft,
+  onChange,
+  fontScale,
+  onFontScaleChange,
+}: {
+  draft: VibeCodingDraft;
+  onChange: React.Dispatch<React.SetStateAction<VibeCodingDraft>>;
+  fontScale: EditorFontScale;
+  onFontScaleChange: React.Dispatch<React.SetStateAction<EditorFontScale>>;
+}) {
+  const normalizedDraft = normalizeVibeCodingDraft(draft);
+  const latestVibeCodingDraftRef = useRef(normalizedDraft);
+  const [activeStepId, setActiveStepId] = useState<string>(() => normalizedDraft.steps[0]?.id ?? "");
+
+  useEffect(() => {
+    latestVibeCodingDraftRef.current = normalizedDraft;
+  }, [normalizedDraft]);
+
+  useEffect(() => {
+    if (!normalizedDraft.steps.length) {
+      setActiveStepId("");
+      return;
+    }
+
+    const activeExists = normalizedDraft.steps.some((step) => step.id === activeStepId);
+    if (activeExists) {
+      return;
+    }
+
+    const nextStep = normalizedDraft.steps.find((step) => !step.completed) ?? normalizedDraft.steps[0];
+    setActiveStepId(nextStep.id);
+  }, [activeStepId, normalizedDraft.steps]);
+
+  const activeStep =
+    normalizedDraft.steps.find((step) => step.id === activeStepId) ?? normalizedDraft.steps[0] ?? null;
+  const activeStepIndex = activeStep
+    ? normalizedDraft.steps.findIndex((step) => step.id === activeStep.id)
+    : -1;
+
+  const panelIds = useMemo(
+    () => [
+      "vibe-overview",
+      "vibe-steps",
+      "vibe-active-step",
+      "vibe-codex-build",
+      "vibe-preview",
+    ],
+    [],
+  );
+  const {
+    panels,
+    isFloating,
+    floatPanel,
+    dockPanel,
+    toggleLock,
+    toggleExpanded,
+    startDrag,
+    startResize,
+  } = usePanelWorkspace(panelIds);
+  const resolvedTitle = normalizedDraft.title.trim() || "Shipkit Build System";
+  const resolvedFileName = buildVibeCodingFileName(normalizedDraft.title, normalizedDraft.version);
+  const vibeMetaLines = createVibeCodingMetaLines(normalizedDraft);
+  const previewSections = getVibeCodingExportSections(normalizedDraft);
+
+  function applyVibeCodingDraft(updater: (current: VibeCodingDraft) => VibeCodingDraft) {
+    onChange((current) => {
+      const normalizedCurrent = normalizeVibeCodingDraft(current);
+      const next = updater(normalizedCurrent);
+      latestVibeCodingDraftRef.current = next;
+      return {
+        ...next,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  }
+
+  function updateStep(
+    stepId: string,
+    updater: (current: VibeCodingStepDraft) => VibeCodingStepDraft,
+  ) {
+    applyVibeCodingDraft((current) => ({
+      ...current,
+      steps: current.steps.map((step) => (step.id === stepId ? updater(step) : step)),
+    }));
+  }
+
+  function addVibeCodingStep() {
+    applyVibeCodingDraft((current) => ({
+      ...current,
+      steps: [
+        ...current.steps,
+        createVibeCodingStepDraft({
+          id: createDraftSectionId("vibe-step"),
+          title: `Part ${current.steps.length + 1} — New workflow step`,
+          tool: "ChatGPT",
+          goal: "Use this step for project-specific vibe-coding workflow guidance.",
+          requiredInputs: [
+            "What you need before you can run this step.",
+          ],
+          howToUse: [
+            "Paste the prompt into the right tool.",
+            "Capture the useful result in Project output.",
+            "Export the artifact when the step is done.",
+          ],
+          artifactLabel: "Working artifact",
+          artifactPrefix: "workflow-step",
+          artifactTemplate: "workflow-step-[project-name].md",
+          artifactUsedFor: "Use this in the next relevant step.",
+          outputPlaceholder: "[Paste the actual result of this step here]",
+          prompt: "",
+        }),
+      ],
+    }));
+  }
+
+  function deleteVibeCodingStep(stepId: string) {
+    applyVibeCodingDraft((current) => ({
+      ...current,
+      steps: current.steps.filter((step) => step.id !== stepId),
+    }));
+  }
+
+  function handleSelectStep(stepId: string) {
+    setActiveStepId(stepId);
+  }
+
+  function moveToAdjacentStep(direction: "prev" | "next") {
+    if (!activeStep) {
+      return;
+    }
+
+    const nextIndex = direction === "next" ? activeStepIndex + 1 : activeStepIndex - 1;
+    const nextStep = normalizedDraft.steps[nextIndex];
+    if (!nextStep) {
+      return;
+    }
+
+    setActiveStepId(nextStep.id);
+  }
+
+  function handleExportMarkdown() {
+    const currentDraft = latestVibeCodingDraftRef.current;
+    const currentTitle = currentDraft.title.trim() || "Shipkit Build System";
+    const markdown = getVibeCodingExportMarkdown(currentDraft, currentTitle);
+    const currentFileName = buildVibeCodingFileName(currentDraft.title, currentDraft.version);
+    downloadTextFile(`${currentFileName}.md`, markdown);
+  }
+
+  function handleExportPdf() {
+    const currentDraft = latestVibeCodingDraftRef.current;
+    const currentTitle = currentDraft.title.trim() || "Shipkit Build System";
+    const currentFileName = buildVibeCodingFileName(currentDraft.title, currentDraft.version);
+    exportPdfDocument(
+      currentFileName,
+      currentTitle,
+      getVibeCodingExportSections(currentDraft),
+      createVibeCodingMetaLines(currentDraft),
+      "",
+    );
+  }
+  const workflowOverviewContent = (
+    <div className="space-y-4">
+      <div className="surface-subtle px-4 py-4">
+        <div className="mono-label">Current focus</div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <StatusPill tone="default">
+            Step {activeStepIndex >= 0 ? activeStepIndex + 1 : 0} / {normalizedDraft.steps.length}
+          </StatusPill>
+          {activeStep ? (
+            <StatusPill tone={activeStep.completed ? "success" : "warning"}>
+              {activeStep.completed ? "This step is done" : "Work in progress"}
+            </StatusPill>
+          ) : null}
+        </div>
+        <p className="mt-3 text-sm leading-7 text-foreground-soft">
+          Focus on one step at a time. Finish the current step, capture your project output, then move on.
+        </p>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        {normalizedDraft.steps.map((step, index) => (
+          <button
+            key={step.id}
+            type="button"
+            onClick={() => setActiveStepId(step.id)}
+            className={[
+              "rounded-[20px] border px-4 py-4 text-left transition-colors",
+              activeStep?.id === step.id
+                ? "border-border-strong bg-[color:var(--chrome-hover)]"
+                : "border-[color:var(--chrome-soft)] bg-[color:var(--chrome-soft)] hover:bg-[color:var(--chrome-hover)]",
+            ].join(" ")}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="mono-label">{step.tool}</div>
+              <StatusPill tone={step.completed ? "success" : "default"}>
+                {step.completed ? "Done" : `Step ${index + 1}`}
+              </StatusPill>
+            </div>
+            <h3 className="mt-3 text-sm font-semibold tracking-[0.005em]">{step.title}</h3>
+            <p className="mt-2 text-sm leading-6 text-foreground-soft">{step.goal}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const activeStepContent = activeStep ? (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="mono-label">Step details</div>
+        <div className="flex items-center gap-2">
+          <StatusPill tone={activeStep.completed ? "success" : "default"}>
+            {activeStep.completed ? "Complete" : "Open"}
+          </StatusPill>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => floatPanel("vibe-active-step")}
+          >
+            <PinOff className="size-3.5" />
+            Float
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="STEP TITLE">
+          <Input
+            value={activeStep.title}
+            onChange={(event) =>
+              updateStep(activeStep.id, (current) => ({
+                ...current,
+                title: event.target.value,
+              }))
+            }
+            placeholder={`Step ${activeStepIndex + 1} title`}
+          />
+        </Field>
+        <Field label="Tool">
+          <Input value={activeStep.tool} readOnly />
+        </Field>
+      </div>
+
+      <div className="surface-subtle px-4 py-4">
+        <div className="mono-label">Goal</div>
+        <p className="mt-3 text-sm leading-7 text-foreground-soft">{activeStep.goal}</p>
+      </div>
+
+      <CopyableEditableTextareaField
+        label="PROMPT"
+        value={activeStep.prompt}
+        onChange={(prompt) =>
+          updateStep(activeStep.id, (current) => ({
+            ...current,
+            prompt,
+          }))
+        }
+        rows={16}
+        className="text-sm leading-7"
+      />
+
+      <Field label="PROJECT OUTPUT">
+        <Textarea
+          value={activeStep.notes}
+          onChange={(event) =>
+            updateStep(activeStep.id, (current) => ({
+              ...current,
+              notes: event.target.value,
+            }))
+          }
+          placeholder={activeStep.outputPlaceholder}
+          rows={14}
+          className={getEditorTextAreaClass(fontScale)}
+        />
+      </Field>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label={activeStep.artifactLabel}>
+          <Input value={buildVibeCodingArtifactFileName(activeStep, normalizedDraft.title)} readOnly />
+        </Field>
+        <Field label="DONE">
+          <div className="flex h-12 items-center rounded-2xl border border-[color:var(--input-border)] bg-[color:var(--input-bg)] px-4">
+            <Checkbox
+              checked={activeStep.completed}
+              onChange={(event) =>
+                updateStep(activeStep.id, (current) => ({
+                  ...current,
+                  completed: event.target.checked,
+                }))
+              }
+            />
+            <span className="ml-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              {activeStep.completed ? "Done" : "Not done yet"}
+            </span>
+          </div>
+        </Field>
+      </div>
+
+      <div className="surface-subtle px-4 py-4">
+        <div className="mono-label">Generated file</div>
+        <p className="mt-3 text-sm leading-7 text-foreground-soft">{activeStep.artifactUsedFor}</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() =>
+              downloadTextFile(
+                buildVibeCodingArtifactFileName(activeStep, normalizedDraft.title),
+                getVibeCodingArtifactMarkdown(activeStep, normalizedDraft),
+              )
+            }
+          >
+            <Download className="size-4" />
+            Save this file
+          </Button>
+          <CopyButton
+            value={getVibeCodingArtifactMarkdown(activeStep, normalizedDraft)}
+            label="Copy file contents"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap justify-between gap-2">
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => moveToAdjacentStep("prev")}
+            disabled={activeStepIndex <= 0}
+          >
+            Previous step
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => moveToAdjacentStep("next")}
+            disabled={activeStepIndex === -1 || activeStepIndex >= normalizedDraft.steps.length - 1}
+          >
+            Next step
+          </Button>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => deleteVibeCodingStep(activeStep.id)}>
+          <X className="size-3.5" />
+          Delete step
+        </Button>
+      </div>
+    </div>
+  ) : (
+    <div className="text-sm leading-7 text-foreground-soft">No active step.</div>
+  );
+
+  const codexBuildContent = (
+    <div className="space-y-4">
+      <Field label="Codex kickoff prompt">
+        <div className="space-y-2">
+          <Textarea
+            value={normalizedDraft.kickoffPrompt}
+            onChange={(event) =>
+              applyVibeCodingDraft((current) => ({
+                ...current,
+                kickoffPrompt: event.target.value,
+              }))
+            }
+            rows={5}
+            className="text-sm leading-7"
+          />
+          <CopyButton value={normalizedDraft.kickoffPrompt} label="Copy prompt" />
+        </div>
+      </Field>
+
+      <div className="surface-subtle px-4 py-4">
+        <div className="mono-label">Build loop guidance</div>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-foreground-soft">
+          {VIBE_CODING_BUILD_LOOP_GUIDANCE.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+
+
+<div className="surface-subtle px-4 py-4">
+  <div className="mono-label">Project skeleton guidance</div>
+  <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-foreground-soft">
+    {VIBE_CODING_PROJECT_SKELETON_GUIDANCE.map((item, i, arr) => {
+      const isCode = item.includes("\n");
+      const isFirst = i === 0;
+      const isLast = i === arr.length - 1;
+
+      const noBullet = isCode || isFirst || isLast;
+
+      return (
+        <li
+          key={item}
+          className={noBullet ? "list-none pl-0" : ""}
+        >
+          {isCode ? (
+            <pre className="mt-2 rounded-lg bg-muted p-4 text-sm overflow-x-auto font-mono whitespace-pre">
+              {item}
+            </pre>
+          ) : (
+            item
+          )}
+        </li>
+      );
+    })}
+  </ul>
+</div>
+
+
+      <div className="surface-subtle px-4 py-4">
+        <div className="mono-label">Deployment guidance</div>
+        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-foreground-soft">
+          {VIBE_CODING_DEPLOYMENT_GUIDANCE.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+
+  const activeStepHowToUseContent = activeStep ? (
+    <div className="surface-subtle px-4 py-4">
+      <div className="mono-label">How to use this step</div>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-7 text-foreground-soft">
+        {activeStep.howToUse.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  ) : null;
+
+  const floatingPanels = [
+    {
+      id: "vibe-overview",
+      title: "Workflow overview",
+      content: workflowOverviewContent,
+    },
+    {
+      id: "vibe-steps",
+      title: "Steps",
+      content: renderVibeCodingStepsNav({
+        draft: normalizedDraft,
+        projectName: normalizedDraft.title,
+        onAdd: addVibeCodingStep,
+        activeStepId,
+        onSelect: handleSelectStep,
+        onDelete: deleteVibeCodingStep,
+      }),
+    },
+    {
+      id: "vibe-active-step",
+      title: activeStep?.title ?? "Active step",
+      content: activeStepContent,
+    },
+    {
+      id: "vibe-codex-build",
+      title: "Codex build loop",
+      content: codexBuildContent,
+    },
+    {
+      id: "vibe-preview",
+      title: "Live Preview",
+      content: (
+        <DocumentPreview
+          title={resolvedTitle}
+          metaLines={vibeMetaLines}
+          sections={previewSections}
+          fontScale={fontScale}
+          emptyText=""
+        />
+      ),
+    },
+  ].filter((panel) => isFloating(panel.id));
+
+  return (
+    <div className="page-frame mx-auto flex max-w-[1600px] flex-col gap-4 px-4 py-6 md:px-6">
+      <PageHeader
+        eyebrow="Vibe coding"
+        title="Vibe Coding"
+        description="Run the project from deep research to Codex build execution in one guided workspace, then export the workflow as clean Markdown or PDF."
+        actions={
+          <>
+            <Button variant="secondary" onClick={handleExportMarkdown}>
+              <Download className="size-4" />
+              Export Markdown
+            </Button>
+            <Button variant="primary" onClick={handleExportPdf}>
+              <FileDown className="size-4" />
+              Export PDF
+            </Button>
+          </>
+        }
+      />
+
+      <div
+        className={[
+          "editor-grid",
+          isFloating("vibe-steps") ? "workspace-columns-right" : "workspace-columns-both",
+        ].join(" ")}
+      >
+        {!isFloating("vibe-steps") ? (
+          <Panel className="h-fit xl:sticky xl:top-6">
+            <DockedPanelHeader title="Steps" onDetach={() => floatPanel("vibe-steps")} />
+            <div className="scroll-panel mt-4">
+              {renderVibeCodingStepsNav({
+                draft: normalizedDraft,
+                projectName: normalizedDraft.title,
+                onAdd: addVibeCodingStep,
+                activeStepId,
+                onSelect: handleSelectStep,
+                onDelete: deleteVibeCodingStep,
+              })}
+            </div>
+          </Panel>
+        ) : null}
+
+        <div className="space-y-4">
+          {!isFloating("vibe-overview") ? (
+            <Panel>
+              <DockedPanelHeader
+                title="How to work here"
+                onDetach={() => floatPanel("vibe-overview")}
+              />
+              <div className="mt-4">{workflowOverviewContent}</div>
+            </Panel>
+          ) : null}
+
+          {activeStepHowToUseContent ? (
+            <Panel>
+              <DockedPanelHeader title="How to use this step" />
+              <div className="mt-4">{activeStepHowToUseContent}</div>
+            </Panel>
+          ) : null}
+
+          {!isFloating("vibe-active-step") ? (
+            <Panel>
+              <DockedPanelHeader
+                title={activeStep?.title ?? "Active step"}
+                subtitle={activeStep ? `Step ${activeStepIndex + 1}` : undefined}
+                onDetach={() => floatPanel("vibe-active-step")}
+                status={
+                  activeStep ? (
+                    <StatusPill tone={activeStep.completed ? "success" : "default"}>
+                      {activeStep.completed ? "Complete" : "Open"}
+                    </StatusPill>
+                  ) : null
+                }
+              />
+              <div className="mt-4">{activeStepContent}</div>
+            </Panel>
+          ) : null}
+
+          {activeStep?.tool === "Codex" && !isFloating("vibe-codex-build") ? (
+            <Panel className="stagger-enter">
+              <DockedPanelHeader
+                title="Codex build loop"
+                onDetach={() => floatPanel("vibe-codex-build")}
+              />
+              <div className="mt-4">{codexBuildContent}</div>
+            </Panel>
+          ) : null}
+        </div>
+
+        <div className="sticky-stack-scroll space-y-4">
+          <Panel>
+            <div className="space-y-4">
+              <div>
+                <div className="mono-label">Document settings</div>
+                <h2 className="mt-2 text-lg font-semibold tracking-[0.005em]">
+                  File name and export
+                </h2>
+              </div>
+
+              <ControlGroup
+                label="Text size"
+                options={[
+                  { value: "sm", label: "S", icon: <Type className="size-3.5" /> },
+                  { value: "md", label: "M", icon: <Type className="size-4" /> },
+                  { value: "lg", label: "L", icon: <Type className="size-[1.05rem]" /> },
+                ]}
+                value={fontScale}
+                onChange={(value) => onFontScaleChange(value as EditorFontScale)}
+              />
+
+              <Field
+                label="Project name"
+                hint="Used as the document title and for generated artifact file names across the workflow."
+              >
+                <Input
+                  placeholder="Project name"
+                  value={normalizedDraft.title}
+                  onChange={(event) =>
+                    applyVibeCodingDraft((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Document"
+                hint="Fixed document label used in live preview and exported documents."
+              >
+                <Input value="Shipkit Build System" readOnly />
+              </Field>
+
+              <Field
+                label="Version"
+                hint={`Shown in live preview and export. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
+              >
+                <Input
+                  placeholder={DEV_PROJECT_VERSION_DEFAULT}
+                  value={normalizedDraft.version}
+                  onChange={(event) =>
+                    applyVibeCodingDraft((current) => ({
+                      ...current,
+                      version: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field label="Owner" hint="Shown in live preview and exported documents.">
+                <Input
+                  placeholder="Owner"
+                  value={normalizedDraft.owner}
+                  onChange={(event) =>
+                    applyVibeCodingDraft((current) => ({
+                      ...current,
+                      owner: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field label="Created" hint="Use YYYY-MM-DD format, for example 2026-04-24.">
+                <Input
+                  type="date"
+                  value={normalizedDraft.created}
+                  onChange={(event) =>
+                    applyVibeCodingDraft((current) => ({
+                      ...current,
+                      created: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field label="Last updated" hint="Use YYYY-MM-DD format, for example 2026-04-24.">
+                <Input
+                  type="date"
+                  value={normalizedDraft.lastUpdated}
+                  onChange={(event) =>
+                    applyVibeCodingDraft((current) => ({
+                      ...current,
+                      lastUpdated: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="File name"
+                hint={`Generated automatically as ${resolvedFileName}.md / ${resolvedFileName}.pdf`}
+              >
+                <Input value={resolvedFileName} readOnly />
+              </Field>
+
+              <div className="grid gap-2">
+                <Button variant="primary" onClick={handleExportPdf}>
+                  <FileDown className="size-4" />
+                  Save PDF
+                </Button>
+                <Button variant="secondary" onClick={handleExportMarkdown}>
+                  <Download className="size-4" />
+                  Save Markdown
+                </Button>
+                <Button variant="ghost" onClick={() => applyVibeCodingDraft(() => createVibeCodingDraft())}>
+                  <RefreshCcw className="size-4" />
+                  Reset draft
+                </Button>
+              </div>
+            </div>
+          </Panel>
+
+          <Panel>
+            <div className="space-y-4">
+              <div>
+                <div className="mono-label">Generated files</div>
+                <h2 className="mt-2 text-lg font-semibold tracking-[0.005em]">
+                  Step artifacts
+                </h2>
+              </div>
+
+              <div className="space-y-3">
+                {normalizedDraft.steps.map((step) => (
+                  <div key={step.id} className="surface-subtle px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="mono-label">{step.tool}</div>
+                        <h3 className="mt-2 text-sm font-semibold tracking-[0.005em]">
+                          {buildVibeCodingArtifactFileName(step, normalizedDraft.title)}
+                        </h3>
+                      </div>
+                      <StatusPill tone={step.completed ? "success" : "default"}>
+                        {step.completed ? "Ready" : "Draft"}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-3 text-sm leading-7 text-foreground-soft">
+                      {step.artifactUsedFor}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          downloadTextFile(
+                            buildVibeCodingArtifactFileName(step, normalizedDraft.title),
+                            getVibeCodingArtifactMarkdown(step, normalizedDraft),
+                          )
+                        }
+                      >
+                        <Download className="size-4" />
+                        Save file
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setActiveStepId(step.id)}>
+                        Open step
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Panel>
+
+          {!isFloating("vibe-preview") ? (
+            <Panel>
+              <DockedPanelHeader
+                title="Live Preview"
+                subtitle={resolvedFileName}
+                onDetach={() => floatPanel("vibe-preview")}
+              />
+              <div className="mt-4">
+                <DocumentPreview
+                  title={resolvedTitle}
+                  metaLines={vibeMetaLines}
+                  sections={previewSections}
+                  fontScale={fontScale}
+                  emptyText=""
                 />
               </div>
             </Panel>
@@ -915,9 +2325,15 @@ function CodeReviewPage({
   onFontScaleChange: React.Dispatch<React.SetStateAction<EditorFontScale>>;
 }) {
   const normalizedDraft = normalizeCodeReviewDraft(draft);
-  const deferredDraft = useDeferredValue(normalizedDraft);
+  const latestCodeReviewDraftRef = useRef(normalizedDraft);
+
+  useEffect(() => {
+    latestCodeReviewDraftRef.current = normalizedDraft;
+  }, [normalizedDraft]);
+
   const panelIds = useMemo(
     () => [
+      "review-scope",
       "review-sections",
       "review-document",
       "review-preview",
@@ -936,63 +2352,77 @@ function CodeReviewPage({
     startResize,
   } = usePanelWorkspace(panelIds);
   const resolvedTitle = normalizedDraft.title.trim() || "Code Review Document";
-  const resolvedFileName = buildCodeReviewFileName(normalizedDraft.title);
-  const markdown = generateCodeReviewMarkdown(resolvedTitle, normalizedDraft.sections);
-  const completedCount = normalizedDraft.sections.filter((section) => section.checked).length;
+  const resolvedFileName = buildCodeReviewFileName(normalizedDraft.title, normalizedDraft.version);
+  const reviewMetaLines = createCodeReviewMetaLines(normalizedDraft);
+
+  function applyCodeReviewDraft(updater: (current: CodeReviewDraft) => CodeReviewDraft) {
+    onChange((current) => {
+      const normalizedCurrent = normalizeCodeReviewDraft(current);
+      const next = updater(normalizedCurrent);
+      latestCodeReviewDraftRef.current = next;
+      return {
+        ...next,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+  }
 
   function updateSection(
     sectionId: string,
     updater: (current: CodeReviewSectionDraft) => CodeReviewSectionDraft,
   ) {
-    onChange((current) => {
-      const normalizedCurrent = normalizeCodeReviewDraft(current);
-
-      return {
-        ...normalizedCurrent,
-        updatedAt: new Date().toISOString(),
-        sections: normalizedCurrent.sections.map((section) =>
-          section.id === sectionId ? updater(section) : section,
-        ),
-      };
-    });
+    applyCodeReviewDraft((normalizedCurrent) => ({
+      ...normalizedCurrent,
+      sections: normalizedCurrent.sections.map((section) =>
+        section.id === sectionId ? updater(section) : section,
+      ),
+    }));
   }
 
   function addCodeReviewSection() {
-    onChange((current) => {
-      const normalizedCurrent = normalizeCodeReviewDraft(current);
+    applyCodeReviewDraft((normalizedCurrent) => ({
+      ...normalizedCurrent,
+      sections: [
+        ...normalizedCurrent.sections,
+        {
+          id: createDraftSectionId("review-section"),
+          baseTitle: `NEW REVIEW SECTION ${normalizedCurrent.sections.length + 1}`,
+          title: `New review section ${normalizedCurrent.sections.length + 1}`,
+          checklist: "",
+          findings: "",
+          checked: false,
+        },
+      ],
+    }));
+  }
 
-      return {
-        ...normalizedCurrent,
-        updatedAt: new Date().toISOString(),
-        sections: [
-          ...normalizedCurrent.sections,
-          {
-            id: createDraftSectionId("review-section"),
-            title: `New review section ${normalizedCurrent.sections.length + 1}`,
-            prompts: [],
-            checked: false,
-            notes: "",
-            findings: "",
-            severity: "",
-            needsVerification: false,
-          },
-        ],
-      };
-    });
+  function deleteCodeReviewSection(sectionId: string) {
+    applyCodeReviewDraft((normalizedCurrent) => ({
+      ...normalizedCurrent,
+      sections: normalizedCurrent.sections.filter((section) => section.id !== sectionId),
+    }));
   }
 
   function handleExportMarkdown() {
-    downloadTextFile(`${resolvedFileName}.md`, markdown);
+    const currentDraft = latestCodeReviewDraftRef.current;
+    const currentTitle = currentDraft.title.trim() || "Code Review Document";
+    const currentFileName = buildCodeReviewFileName(currentDraft.title, currentDraft.version);
+    const currentMetaLines = createCodeReviewMetaLines(currentDraft);
+    const markdown = generateCodeReviewMarkdown(currentTitle, currentDraft.sections, currentMetaLines);
+    downloadTextFile(`${currentFileName}.md`, markdown);
   }
 
   function handleExportPdf() {
+    const currentDraft = latestCodeReviewDraftRef.current;
+    const currentTitle = currentDraft.title.trim() || "Code Review Document";
+    const currentFileName = buildCodeReviewFileName(currentDraft.title, currentDraft.version);
+    const currentMetaLines = createCodeReviewMetaLines(currentDraft);
     exportPdfDocument(
-      resolvedFileName,
-      resolvedTitle,
-      normalizedDraft.sections.map((section) => ({
-        title: section.title,
-        body: createCodeReviewSectionExport(section),
-      })),
+      currentFileName,
+      currentTitle,
+      getCodeReviewExportSections(currentDraft),
+      currentMetaLines,
+      "",
     );
   }
 
@@ -1018,25 +2448,21 @@ function CodeReviewPage({
                   {section.title}
                 </h3>
               </div>
-              <div className="flex items-center gap-2">
-                <StatusPill tone={section.checked ? "success" : "default"}>
-                  {section.checked ? "Checked" : "Open"}
-                </StatusPill>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => floatPanel(`review-section-${section.id}`)}
-                >
-                  <PinOff className="size-3.5" />
-                  Float
-                </Button>
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => floatPanel(`review-section-${section.id}`)}
+              >
+                <PinOff className="size-3.5" />
+                Float
+              </Button>
             </div>
             {renderCodeReviewSectionEditor({
               section,
               fontScale,
               displayMode: "inline",
               onChange: updateSection,
+              onDelete: () => deleteCodeReviewSection(section.id),
             })}
             {section.id !== normalizedDraft.sections[normalizedDraft.sections.length - 1]?.id ? (
               <div className="soft-divider" />
@@ -1049,12 +2475,32 @@ function CodeReviewPage({
 
   const floatingPanels = [
     {
+      id: "review-scope",
+      title: "Review scope prompt",
+      content: (
+        <CopyableEditableTextareaField
+          label="Review scope prompt"
+          value={normalizedDraft.reviewScopePrompt}
+          onChange={(reviewScopePrompt) =>
+            onChange((current) => ({
+              ...normalizeCodeReviewDraft(current),
+              reviewScopePrompt,
+              updatedAt: new Date().toISOString(),
+            }))
+          }
+          rows={24}
+          className="text-sm leading-7"
+        />
+      ),
+    },
+    {
       id: "review-sections",
       title: "Sections",
       content: renderCodeReviewSectionsNav({
         draft: normalizedDraft,
         onAdd: addCodeReviewSection,
         onJump: handleJumpToSection,
+        onDelete: deleteCodeReviewSection,
       }),
     },
     {
@@ -1063,11 +2509,10 @@ function CodeReviewPage({
       content: (
         <DocumentPreview
           title={resolvedTitle}
-          sections={deferredDraft.sections.map((section) => ({
-            title: section.title,
-            body: createCodeReviewSectionExport(section),
-          }))}
+          metaLines={reviewMetaLines}
+          sections={getCodeReviewExportSections(normalizedDraft)}
           fontScale={fontScale}
+          emptyText=""
         />
       ),
     },
@@ -1089,6 +2534,7 @@ function CodeReviewPage({
           fontScale,
           displayMode: "panel",
           onChange: updateSection,
+          onDelete: () => deleteCodeReviewSection(section.id),
         }),
       };
     }),
@@ -1124,7 +2570,6 @@ function CodeReviewPage({
           <Panel className="h-fit xl:sticky xl:top-6">
             <DockedPanelHeader
               title="Sections"
-              subtitle={`${completedCount}/${normalizedDraft.sections.length} checked`}
               onDetach={() => floatPanel("review-sections")}
             />
             <div className="scroll-panel mt-4">
@@ -1132,17 +2577,40 @@ function CodeReviewPage({
                 draft: normalizedDraft,
                 onAdd: addCodeReviewSection,
                 onJump: handleJumpToSection,
+                onDelete: deleteCodeReviewSection,
               })}
             </div>
           </Panel>
         ) : null}
 
         <div className="space-y-4">
+          {!isFloating("review-scope") ? (
+            <Panel className="stagger-enter">
+              <DockedPanelHeader
+                title="Review scope prompt"
+                onDetach={() => floatPanel("review-scope")}
+              />
+              <div className="mt-4">
+                <CopyableEditableTextareaField
+                  label="Review scope prompt"
+                  value={normalizedDraft.reviewScopePrompt}
+                  onChange={(reviewScopePrompt) =>
+                    applyCodeReviewDraft((current) => ({
+                      ...current,
+                      reviewScopePrompt,
+                    }))
+                  }
+                  rows={20}
+                  className="text-sm leading-7"
+                />
+              </div>
+            </Panel>
+          ) : null}
+
           {layoutMode === "single" && !isFloating("review-document") ? (
             <Panel className="stagger-enter">
               <DockedPanelHeader
                 title="Review document"
-                subtitle={`${normalizedDraft.sections.length} sections in one editor`}
                 status={<StatusPill tone="default">Continuous</StatusPill>}
                 onDetach={() => floatPanel("review-document")}
               />
@@ -1155,13 +2623,7 @@ function CodeReviewPage({
                 <section id={section.id} className="section-anchor">
                   <DockedPanelHeader
                     title={section.title}
-                    subtitle="Checklist section"
                     onDetach={() => floatPanel(`review-section-${section.id}`)}
-                    status={
-                      <StatusPill tone={section.checked ? "success" : "default"}>
-                        {section.checked ? "Checked" : "Open"}
-                      </StatusPill>
-                    }
                   />
                   <div className="mt-4">
                     {renderCodeReviewSectionEditor({
@@ -1169,6 +2631,7 @@ function CodeReviewPage({
                       fontScale,
                       displayMode: "panel",
                       onChange: updateSection,
+                      onDelete: () => deleteCodeReviewSection(section.id),
                     })}
                   </div>
                 </section>
@@ -1217,10 +2680,61 @@ function CodeReviewPage({
                   placeholder="Project name"
                   value={normalizedDraft.title}
                   onChange={(event) =>
-                    onChange((current) => ({
+                    applyCodeReviewDraft((current) => ({
                       ...current,
                       title: event.target.value,
-                      updatedAt: new Date().toISOString(),
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Document"
+                hint="Fixed document label used in live preview and exported documents."
+              >
+                <Input value="Code Review" readOnly />
+              </Field>
+
+              <Field
+                label="Version"
+                hint={`Shown in live preview and export. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
+              >
+                <Input
+                  placeholder={DEV_PROJECT_VERSION_DEFAULT}
+                  value={normalizedDraft.version}
+                  onChange={(event) =>
+                    applyCodeReviewDraft((current) => ({
+                      ...current,
+                      version: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field label="Owner" hint="Shown in live preview and exported documents.">
+                <Input
+                  placeholder="Owner"
+                  value={normalizedDraft.owner}
+                  onChange={(event) =>
+                    applyCodeReviewDraft((current) => ({
+                      ...current,
+                      owner: event.target.value,
+                    }))
+                  }
+                />
+              </Field>
+
+              <Field
+                label="Review date"
+                hint="Use YYYY-MM-DD format, for example 2026-04-23."
+              >
+                <Input
+                  type="date"
+                  value={normalizedDraft.lastChecked}
+                  onChange={(event) =>
+                    applyCodeReviewDraft((current) => ({
+                      ...current,
+                      lastChecked: event.target.value,
                     }))
                   }
                 />
@@ -1244,7 +2758,7 @@ function CodeReviewPage({
                   <Download className="size-4" />
                   Save Markdown
                 </Button>
-                <Button variant="ghost" onClick={() => onChange(createCodeReviewDraft())}>
+                <Button variant="ghost" onClick={() => applyCodeReviewDraft(() => createCodeReviewDraft())}>
                   <RefreshCcw className="size-4" />
                   Reset review
                 </Button>
@@ -1262,11 +2776,10 @@ function CodeReviewPage({
               <div className="mt-4">
                 <DocumentPreview
                   title={resolvedTitle}
-                  sections={deferredDraft.sections.map((section) => ({
-                    title: section.title,
-                    body: createCodeReviewSectionExport(section),
-                  }))}
+                  metaLines={reviewMetaLines}
+                  sections={getCodeReviewExportSections(normalizedDraft)}
                   fontScale={fontScale}
+                  emptyText=""
                 />
               </div>
             </Panel>
@@ -1298,21 +2811,21 @@ function HelpDocsLibrary({
 }) {
   const [filter, setFilter] = useState<HelpDocFilter>("all");
   const [activeDocSlug, setActiveDocSlug] = useState<string | null>(null);
-  const filteredDocs = helpDocuments.filter((doc) => {
+  const filteredDocs = frameworkDocuments.filter((doc) => {
     if (filter === "all") {
       return true;
     }
 
     return getHelpDocCategory(doc) === filter;
   });
-  const activeHelpDoc = helpDocuments.find((doc) => doc.slug === activeDocSlug) ?? null;
+  const activeHelpDoc = frameworkDocuments.find((doc) => doc.slug === activeDocSlug) ?? null;
 
   return (
     <div className="page-frame mx-auto flex max-w-[1450px] flex-col gap-6 px-4 py-6 md:px-6">
       <PageIntro
-        eyebrow="Help docs"
-        title="Help Docs"
-        description="Open the right reference document, shape it in the app, and export a clean final Markdown or PDF artifact."
+        eyebrow="Frameworks"
+        title="Frameworks"
+        description="A set of brutal frameworks for pressure-testing product ideas, decisions, and thinking."
       />
 
       <div className="surface-subtle flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between">
@@ -1324,7 +2837,7 @@ function HelpDocsLibrary({
         </div>
         <div className="w-full max-w-[560px]">
           <ControlGroup
-            label="Visible help docs"
+            label="Visible frameworks"
             options={[
               { value: "all", label: "All" },
               { value: "ai", label: "AI" },
@@ -1370,7 +2883,7 @@ function HelpDocsLibrary({
                     onClick={() => setActiveDocSlug(doc.slug)}
                   >
                     <FilePenLine data-icon="inline-start" className="size-4" />
-                    Open help doc
+                    Open framework
                   </Button>
                 </div>
               </div>
@@ -1409,7 +2922,7 @@ function HelpDocFloatingCard({
   onChange,
   onClose,
 }: {
-  doc: HelpDocument;
+  doc: FrameworkDocument;
   draft: HelpDocDraft;
   onChange: (updater: (current: HelpDocDraft) => HelpDocDraft) => void;
   onClose: () => void;
@@ -1432,7 +2945,7 @@ function HelpDocFloatingCard({
   return (
     <div className="fixed inset-0 z-[45] bg-black/18 backdrop-blur-[2px]" onClick={onClose}>
       <div
-        className="floating-window"
+        className="floating-window overflow-hidden"
         style={{
           left: "50%",
           top: 24,
@@ -1442,12 +2955,8 @@ function HelpDocFloatingCard({
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="floating-window-header">
-          <div className="min-w-0">
-            <div className="mono-label">Help doc</div>
-            <div className="truncate text-sm font-medium text-foreground">{doc.title}</div>
-          </div>
-          <div className="flex items-center gap-2">
+        <div className="h-full overflow-auto px-6 py-5 md:px-7 md:py-6">
+          <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={handleCopyContents}>
               <Copy className="size-4" />
               {copied ? "Copied" : "Copy contents"}
@@ -1456,12 +2965,8 @@ function HelpDocFloatingCard({
               <X className="size-4" />
             </Button>
           </div>
-        </div>
-
-        <div className="floating-window-body">
-          <div className="mx-auto max-w-4xl space-y-6 py-2">
-            <div className="space-y-3">
-              <div className="mono-label">Headline</div>
+          <div className="mx-auto mt-1 max-w-4xl space-y-6">
+            <div>
               <h1 className="text-4xl font-semibold tracking-[0.01em] text-gradient md:text-5xl">
                 {doc.title}
               </h1>
@@ -1662,10 +3167,12 @@ function renderTemplateSectionsNav({
   draft,
   onAdd,
   onJump,
+  onDelete,
 }: {
   draft: TemplateDraft;
   onAdd?: () => void;
   onJump?: (sectionId: string) => void;
+  onDelete?: (sectionId: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -1679,20 +3186,29 @@ function renderTemplateSectionsNav({
         const status = getTemplateSectionStatus(section);
 
         return (
-          <button
+          <div
             key={section.id}
-            type="button"
-            onClick={() => onJump?.(section.id)}
-            className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-transparent px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--chrome-soft)]"
+            className="flex items-center gap-2 rounded-[18px] border border-transparent px-2 py-1.5 transition-colors hover:bg-[color:var(--chrome-soft)]"
           >
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-foreground">{section.title}</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Section {index + 1}
+            <button
+              type="button"
+              onClick={() => onJump?.(section.id)}
+              className="flex min-w-0 flex-1 items-center justify-between gap-3 px-1 py-1 text-left"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-foreground">{section.title}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Section {index + 1}
+                </div>
               </div>
-            </div>
-            {status.label ? <StatusPill tone={status.tone}>{status.label}</StatusPill> : null}
-          </button>
+              {status.label ? <StatusPill tone={status.tone}>{status.label}</StatusPill> : null}
+            </button>
+            {onDelete ? (
+              <Button variant="ghost" size="sm" onClick={() => onDelete(section.id)}>
+                <X className="size-3.5" />
+              </Button>
+            ) : null}
+          </div>
         );
       })}
     </div>
@@ -1705,52 +3221,50 @@ function renderTemplateSectionEditor({
   fontScale,
   displayMode,
   onTitleChange,
+  onHelpTextChange,
   onChange,
+  onDelete,
 }: {
   draftSection: TemplateDraftSection;
   sectionIndex: number;
   fontScale: EditorFontScale;
   displayMode: "panel" | "inline";
   onTitleChange: (title: string) => void;
+  onHelpTextChange: (helpText: string) => void;
   onChange: (content: string) => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="space-y-4">
-      {displayMode === "panel" ? (
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-          <div className="surface-subtle px-4 py-3">
-            <div className="mono-label">Section brief</div>
-            <p className="mt-2 text-sm leading-6 text-foreground-soft">
-              {draftSection.helpText || "Use this section for additional project-specific context."}
-            </p>
-          </div>
-          <div className="surface-subtle px-4 py-3">
-            <div className="mono-label">Editing mode</div>
-            <div className="mt-2 text-sm text-foreground-soft">Structured document block</div>
-            <div className="mt-1 text-xs leading-5 text-muted-foreground">
-              Use bullets or short paragraphs. Keep this section concrete and project-specific.
-            </div>
-          </div>
+      {onDelete ? (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={onDelete}>
+            <X className="size-3.5" />
+            Delete section
+          </Button>
         </div>
-      ) : (
-        <div className="space-y-2">
-          <div className="mono-label">Section brief</div>
-          <p className="max-w-3xl text-sm leading-6 text-foreground-soft">
-            {draftSection.helpText || "Use this section for additional project-specific context."}
-          </p>
-        </div>
-      )}
-      <Field label={`Section ${sectionIndex + 1}`}>
+      ) : null}
+      <Field label="SECTION NAME">
         <Input
           value={draftSection.title}
           onChange={(event) => onTitleChange(event.target.value)}
           placeholder={`Section ${sectionIndex + 1} title`}
         />
       </Field>
-      <Field label="Content">
+      {draftSection.helpText.trim() ? (
+        <CopyableEditableTextareaField
+          label="MUST INCLUDE"
+          value={draftSection.helpText}
+          onChange={onHelpTextChange}
+          rows={displayMode === "panel" ? 14 : 10}
+          className="text-sm leading-7"
+        />
+      ) : null}
+      <Field label="OUTPUT">
         <Textarea
           value={draftSection.content}
           onChange={(event) => onChange(event.target.value)}
+          placeholder="[Add your input here]"
           className={getEditorTextAreaClass(fontScale)}
           rows={14}
         />
@@ -1763,10 +3277,12 @@ function renderCodeReviewSectionsNav({
   draft,
   onAdd,
   onJump,
+  onDelete,
 }: {
   draft: CodeReviewDraft;
   onAdd?: () => void;
   onJump?: (sectionId: string) => void;
+  onDelete?: (sectionId: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -1777,19 +3293,28 @@ function renderCodeReviewSectionsNav({
         </Button>
       ) : null}
       {draft.sections.map((section) => (
-        <button
+        <div
           key={section.id}
-          type="button"
-          onClick={() => onJump?.(section.id)}
-          className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-transparent px-3 py-2.5 text-left transition-colors hover:bg-[color:var(--chrome-soft)]"
+          className="flex items-center gap-2 rounded-[18px] border border-transparent px-2 py-1.5 transition-colors hover:bg-[color:var(--chrome-soft)]"
         >
-          <span className="min-w-0 truncate text-sm font-medium text-foreground-soft">
-            {section.title}
-          </span>
-          <StatusPill tone={section.checked ? "success" : "default"}>
-            {section.checked ? "Checked" : "Open"}
-          </StatusPill>
-        </button>
+          <button
+            type="button"
+            onClick={() => onJump?.(section.id)}
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 px-1 py-1 text-left"
+          >
+            <span className="min-w-0 truncate text-sm font-medium text-foreground-soft">
+              {section.title}
+            </span>
+            <StatusPill tone={section.checked ? "success" : "default"}>
+              {section.checked ? "Checked" : "Open"}
+            </StatusPill>
+          </button>
+          {onDelete ? (
+            <Button variant="ghost" size="sm" onClick={() => onDelete(section.id)}>
+              <X className="size-3.5" />
+            </Button>
+          ) : null}
+        </div>
       ))}
     </div>
   );
@@ -1835,6 +3360,7 @@ function renderCodeReviewSectionEditor({
   fontScale,
   displayMode,
   onChange,
+  onDelete,
 }: {
   section: CodeReviewSectionDraft;
   fontScale: EditorFontScale;
@@ -1843,19 +3369,21 @@ function renderCodeReviewSectionEditor({
     sectionId: string,
     updater: (current: CodeReviewSectionDraft) => CodeReviewSectionDraft,
   ) => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="mono-label">Checklist prompts</div>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground-soft">
-            {section.prompts.length > 0
-              ? section.prompts.join(" · ")
-              : "Add notes and findings for this custom review section."}
-          </p>
+      {onDelete ? (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={onDelete}>
+            <X className="size-3.5" />
+            Delete section
+          </Button>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-[color:var(--input-border)] bg-[color:var(--input-bg)] px-3 py-1.5">
+      ) : null}
+
+      <Field label="MARK AS CHECKED">
+        <div className="flex h-12 items-center rounded-2xl border border-[color:var(--input-border)] bg-[color:var(--input-bg)] px-4">
           <Checkbox
             checked={section.checked}
             onChange={(event) =>
@@ -1865,91 +3393,139 @@ function renderCodeReviewSectionEditor({
               }))
             }
           />
-          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Mark checked
+          <span className="ml-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            {section.checked ? "Checked" : "Open"}
           </span>
         </div>
-      </div>
+      </Field>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Section title">
-          <Input
-            value={section.title}
-            onChange={(event) =>
-              onChange(section.id, (current) => ({
-                ...current,
-                title: event.target.value,
-              }))
-            }
-            placeholder="Section title"
-          />
-        </Field>
-        <Field label="Severity" hint="Optional severity for the strongest finding in this section.">
-          <select
-            value={section.severity}
-            onChange={(event) =>
-              onChange(section.id, (current) => ({
-                ...current,
-                severity: event.target.value as CodeReviewSectionDraft["severity"],
-              }))
-            }
-            className="flex h-12 w-full rounded-2xl border border-[color:var(--input-border)] bg-[color:var(--input-bg)] px-4 text-sm text-foreground outline-none focus-visible:border-[color:var(--chrome-focus)]"
-          >
-            <option value="">No severity</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-        </Field>
+      <Field label="Section title">
+        <Input
+          value={section.title}
+          onChange={(event) =>
+            onChange(section.id, (current) => ({
+              ...current,
+              title: event.target.value,
+            }))
+          }
+          placeholder="Section title"
+        />
+      </Field>
 
-        <Field label="Needs verification" hint="Use when the concern is real but blocked by missing context.">
-          <div className="flex h-12 items-center rounded-2xl border border-[color:var(--input-border)] bg-[color:var(--input-bg)] px-4">
-            <Checkbox
-              checked={section.needsVerification}
-              onChange={(event) =>
-                onChange(section.id, (current) => ({
-                  ...current,
-                  needsVerification: event.target.checked,
-                }))
-              }
-            />
-            <span className="ml-3 text-sm">Flag as needs verification</span>
-          </div>
-        </Field>
-      </div>
+      <CopyableEditableTextareaField
+        label="WHAT TO CHECK"
+        value={section.checklist}
+        onChange={(checklist) =>
+          onChange(section.id, (current) => ({
+            ...current,
+            checklist,
+          }))
+        }
+        rows={displayMode === "panel" ? 14 : 12}
+        className="text-sm leading-7"
+      />
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Field label="Notes">
-          <Textarea
-            value={section.notes}
-            onChange={(event) =>
-              onChange(section.id, (current) => ({
-                ...current,
-                notes: event.target.value,
-              }))
-            }
-            placeholder="Capture what you inspected, what matters here, or any context."
-            className={getEditorTextAreaClass(fontScale)}
-            rows={8}
-          />
-        </Field>
-        <Field label="Findings">
-          <Textarea
-            value={section.findings}
-            onChange={(event) =>
-              onChange(section.id, (current) => ({
-                ...current,
-                findings: event.target.value,
-              }))
-            }
-            placeholder="Concrete findings, risks, or explicit no-issue conclusions."
-            className={getEditorTextAreaClass(fontScale)}
-            rows={8}
-          />
-        </Field>
-      </div>
+      <Field label="FINDINGS">
+        <Textarea
+          value={section.findings}
+          onChange={(event) =>
+            onChange(section.id, (current) => ({
+              ...current,
+              findings: event.target.value,
+            }))
+          }
+          placeholder="[Add your input here]"
+          className={getEditorTextAreaClass(fontScale)}
+          rows={12}
+        />
+      </Field>
     </div>
+  );
+}
+
+function renderVibeCodingStepsNav({
+  draft,
+  projectName,
+  activeStepId,
+  onAdd,
+  onSelect,
+  onDelete,
+}: {
+  draft: VibeCodingDraft;
+  projectName: string;
+  activeStepId: string;
+  onAdd?: () => void;
+  onSelect?: (stepId: string) => void;
+  onDelete?: (stepId: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {onAdd ? (
+        <Button variant="secondary" className="w-full" onClick={onAdd}>
+          <Plus className="size-4" />
+          Add step
+        </Button>
+      ) : null}
+      {draft.steps.map((step) => (
+        <div
+          key={step.id}
+          className={[
+            "flex items-center gap-2 rounded-[18px] border px-2 py-1.5 transition-colors",
+            activeStepId === step.id
+              ? "border-border-strong bg-[color:var(--chrome-hover)]"
+              : "border-transparent hover:bg-[color:var(--chrome-soft)]",
+          ].join(" ")}
+        >
+          <button
+            type="button"
+            onClick={() => onSelect?.(step.id)}
+            className="flex min-w-0 flex-1 items-center justify-between gap-3 px-1 py-1 text-left"
+          >
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-foreground">{step.title}</div>
+              <div className="mt-1 truncate text-xs text-muted-foreground">
+                {step.tool} • {buildVibeCodingArtifactFileName(step, projectName)}
+              </div>
+            </div>
+            <StatusPill tone={step.completed ? "success" : "default"}>
+              {step.completed ? "Complete" : "Open"}
+            </StatusPill>
+          </button>
+          {onDelete ? (
+            <Button variant="ghost" size="sm" onClick={() => onDelete(step.id)}>
+              <X className="size-3.5" />
+            </Button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CopyButton({
+  value,
+  label = "Copy",
+}: {
+  value: string;
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      downloadTextFile("copied-field.txt", value);
+    }
+  }
+
+  return (
+    <Button variant="secondary" onClick={handleCopy}>
+      <Copy className="size-4" />
+      {copied ? "Copied" : label}
+    </Button>
   );
 }
 
@@ -1972,6 +3548,14 @@ function countCustomizedTemplateSections(draft: TemplateDraft) {
   return draft.sections.reduce((count, section) => {
     return count + Number(section.content.trim() !== (section.baseContent ?? "").trim());
   }, 0);
+}
+
+function countCustomizedTemplateDraft(template: TemplateDefinition, draft: TemplateDraft) {
+  if (isSingleDocumentTemplateSlug(template.slug)) {
+    return Number((draft.documentContent ?? "").trim() !== (draft.baseDocumentContent ?? "").trim());
+  }
+
+  return countCustomizedTemplateSections(draft);
 }
 
 function countCustomizedHelpDocSections(draft: HelpDocDraft) {
@@ -2236,14 +3820,14 @@ function createSinglePanelState(index: number): FloatingPanelState {
 }
 
 function getPanelFloatPreset(id: string) {
-  if (id === "template-document" || id === "review-document") {
+  if (id === "template-document" || id === "review-document" || id === "vibe-active-step") {
     return {
       width: 760,
       height: 720,
     };
   }
 
-  if (id === "template-preview" || id === "review-preview") {
+  if (id === "template-preview" || id === "review-preview" || id === "vibe-preview" || id === "vibe-codex-build") {
     return {
       width: 520,
       height: 640,
@@ -2365,24 +3949,41 @@ function PageHeader({
 
 function DocumentPreview({
   title,
+  metaLines = [],
   sections,
   fontScale = "md",
+  emptyText = "Pending content.",
 }: {
   title: string;
+  metaLines?: string[];
   sections: ExportSection[];
   fontScale?: EditorFontScale;
+  emptyText?: string;
 }) {
   return (
     <div className="document-preview max-h-[calc(100vh-18rem)] overflow-auto">
       <div className="border-b border-border pb-4">
         <div className="mono-label">Preview</div>
         <h3 className="mt-2 text-xl font-semibold tracking-[0.005em]">{title}</h3>
+        {metaLines.length > 0 ? (
+          <div className="mt-3 space-y-1">
+            {metaLines.map((line) => (
+              <div key={line} className="text-sm text-foreground-soft">
+                {line}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="mt-5 space-y-6">
         {sections.map((section) => (
           <section key={section.title} className="space-y-2">
-            <h4 className="text-sm font-medium tracking-[0.005em] text-foreground">{section.title}</h4>
-            <DocumentText text={section.body || "Pending content."} fontScale={fontScale} />
+            {section.title ? (
+              <h4 className="text-sm font-medium tracking-[0.005em] text-foreground">
+                {section.title}
+              </h4>
+            ) : null}
+            <DocumentText text={section.body} fontScale={fontScale} emptyText={emptyText} />
           </section>
         ))}
       </div>
@@ -2393,16 +3994,33 @@ function DocumentPreview({
 function DocumentText({
   text,
   fontScale = "md",
+  emptyText = "Pending content.",
 }: {
   text: string;
   fontScale?: EditorFontScale;
+  emptyText?: string;
 }) {
-  const blocks = splitTextBlocks(text);
+  const blocks = splitTextBlocks(text, emptyText);
   const textClass = getPreviewTextClass(fontScale);
 
   return (
     <div className={`space-y-3 text-foreground-soft ${textClass}`}>
       {blocks.map((block, index) => {
+        if (block.type === "separator") {
+          return <div key={`${block.type}-${index}`} className="soft-divider" />;
+        }
+
+        if (block.type === "heading") {
+          return (
+            <p
+              key={`${block.type}-${index}`}
+              className="text-foreground text-[1.12em] font-bold tracking-[0.005em]"
+            >
+              {block.lines[0]}
+            </p>
+          );
+        }
+
         if (block.type === "ul") {
           return (
             <ul key={`${block.type}-${index}`} className="list-disc space-y-1.5 pl-5">
@@ -2454,13 +4072,36 @@ function EmptyState({
 }
 
 function createTemplateDraft(template: TemplateDefinition): TemplateDraft {
+  if (isSingleDocumentTemplateSlug(template.slug)) {
+    const defaultDocumentContent = getTemplateDefaultDocumentContent(template);
+
+    return {
+      title: template.name,
+      version: "",
+      owner: "",
+      created: getTodayDateString(),
+      lastUpdated: getTodayDateString(),
+      fileName: "",
+      baseDocumentContent: defaultDocumentContent,
+      documentContent: defaultDocumentContent,
+      updatedAt: new Date().toISOString(),
+      sections: [],
+    };
+  }
+
   return {
     title: "",
+    version: "",
+    owner: "",
+    created: getTodayDateString(),
+    lastUpdated: getTodayDateString(),
     fileName: "",
     updatedAt: new Date().toISOString(),
     sections: template.sections.map((section) => ({
       id: section.id,
-      title: stripSectionNumber(section.title),
+      baseTitle: section.title,
+      title: section.title,
+      baseHelpText: section.helpText,
       helpText: section.helpText,
       baseContent: section.starter,
       content: section.starter,
@@ -2471,22 +4112,59 @@ function createTemplateDraft(template: TemplateDefinition): TemplateDraft {
 function createCodeReviewDraft(): CodeReviewDraft {
   return {
     title: "",
+    version: "",
+    owner: "",
+    lastChecked: getTodayDateString(),
     fileName: "",
+    reviewScopePrompt: CODE_REVIEW_SCOPE_PROMPT_DEFAULT,
     updatedAt: new Date().toISOString(),
     sections: codeReviewSections.map((section) => ({
       id: section.id,
-      title: section.title,
-      prompts: section.prompts,
-      checked: false,
-      notes: "",
+      baseTitle: section.title.toUpperCase(),
+      title: section.title.toUpperCase(),
+      checklist: section.checklist,
       findings: "",
-      severity: "",
-      needsVerification: false,
+      checked: false,
     })),
   };
 }
 
-function createHelpDocDraft(doc: HelpDocument): HelpDocDraft {
+function createVibeCodingStepDraft(step: VibeCodingStepDefinition): VibeCodingStepDraft {
+  return {
+    id: step.id,
+    baseTitle: step.title,
+    title: step.title,
+    tool: step.tool,
+    goal: step.goal,
+    requiredInputs: step.requiredInputs,
+    howToUse: step.howToUse,
+    artifactLabel: step.artifactLabel,
+    artifactPrefix: step.artifactPrefix,
+    artifactTemplate: step.artifactTemplate,
+    artifactUsedFor: step.artifactUsedFor,
+    outputPlaceholder: step.outputPlaceholder,
+    basePrompt: step.prompt,
+    prompt: step.prompt,
+    notes: "",
+    completed: false,
+  };
+}
+
+function createVibeCodingDraft(): VibeCodingDraft {
+  return {
+    title: "",
+    version: "",
+    owner: "",
+    created: getTodayDateString(),
+    lastUpdated: getTodayDateString(),
+    kickoffPrompt: VIBE_CODING_CODEX_KICKOFF_PROMPT,
+    executionNotes: "",
+    steps: vibeCodingSteps.map(createVibeCodingStepDraft),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function createHelpDocDraft(doc: FrameworkDocument): HelpDocDraft {
   const baseContent = parseHelpDocContent(doc.content);
   return {
     title: doc.title,
@@ -2498,7 +4176,7 @@ function createHelpDocDraft(doc: HelpDocument): HelpDocDraft {
 }
 
 function normalizeHelpDocDraft(
-  doc: HelpDocument,
+  doc: FrameworkDocument,
   draft?: HelpDocDraft | (Partial<HelpDocDraft> & { sections?: HelpDocSectionDraft[] }),
 ) {
   if (!draft) {
@@ -2542,22 +4220,128 @@ function normalizeHelpDocDraft(
 }
 
 function normalizeTemplateDraft(template: TemplateDefinition, draft: TemplateDraft): TemplateDraft {
+  if (isSingleDocumentTemplateSlug(template.slug)) {
+    const defaultDocumentContent = getTemplateDefaultDocumentContent(template);
+    const migratedContentSource =
+      typeof draft.documentContent === "string"
+        ? draft.documentContent
+        : draft.sections.length > 0
+          ? draft.sections
+              .map((section) => {
+                const body = section.content.trim();
+                return body ? `## ${section.title}\n\n${body}` : `## ${section.title}`;
+              })
+              .join("\n\n")
+          : defaultDocumentContent;
+    return {
+      ...draft,
+      title: draft.title || template.name,
+      version: draft.version ?? "",
+      owner: draft.owner ?? "",
+      created: normalizeDateField(draft.created),
+      lastUpdated: normalizeDateField(draft.lastUpdated),
+      baseDocumentContent: defaultDocumentContent,
+      documentContent: migratedContentSource,
+      sections: [],
+    };
+  }
+  const sourceSections =
+    draft.sections.length > 0
+      ? draft.sections
+      : migrateLegacyDocumentContentToSections(template, draft.documentContent);
+  const normalizedSourceSections =
+    template.slug === "dev-pipeline-master-document"
+      ? normalizePipelineTemplateSections(sourceSections)
+      : sourceSections;
+
   return {
     ...draft,
-    sections: draft.sections.map((section, index) => {
+    version: draft.version ?? "",
+    owner: draft.owner ?? "",
+    created: normalizeDateField(draft.created),
+    lastUpdated: normalizeDateField(draft.lastUpdated),
+    sections: normalizedSourceSections.map((section, index) => {
       const definition = template.sections[index];
+      const nextBaseTitle = definition?.title ?? section.baseTitle ?? section.title;
+      const previousBaseTitle = section.baseTitle ?? section.title;
+      const nextBaseContent = definition?.starter ?? section.baseContent ?? "";
+      const previousBaseContent = section.baseContent ?? "";
+      const currentTitle = section.title ?? nextBaseTitle;
+      const currentContent = section.content ?? nextBaseContent;
+      const shouldResetTitle =
+        previousBaseTitle.trim() !== nextBaseTitle.trim() &&
+        currentTitle.trim() === previousBaseTitle.trim();
+      const shouldResetContent =
+        previousBaseContent.trim() !== nextBaseContent.trim() &&
+        currentContent.trim() === previousBaseContent.trim();
 
       return {
         ...section,
-        title: stripSectionNumber(section.title),
+        baseTitle: nextBaseTitle,
+        title: shouldResetTitle ? nextBaseTitle : currentTitle,
+        baseHelpText: definition?.helpText ?? section.baseHelpText ?? "",
         helpText:
-          section.helpText ??
-          definition?.helpText ??
-          "Use this section for additional project-specific context.",
-        baseContent:
-          section.baseContent ??
-          definition?.starter ??
-          "",
+          section.baseHelpText == null
+            ? definition?.helpText ??
+              section.helpText ??
+              "Use this section for additional project-specific context."
+            : section.helpText ??
+              definition?.helpText ??
+              "Use this section for additional project-specific context.",
+        baseContent: nextBaseContent,
+        content: shouldResetContent ? nextBaseContent : currentContent,
+      };
+    }),
+  };
+}
+
+function normalizeVibeCodingDraft(draft: VibeCodingDraft): VibeCodingDraft {
+  const defaultSteps = vibeCodingSteps;
+  const sourceSteps = draft.steps.length > 0 ? draft.steps : defaultSteps.map(createVibeCodingStepDraft);
+
+  return {
+    ...draft,
+    version: draft.version ?? "",
+    owner: draft.owner ?? "",
+    created: normalizeDateField(draft.created),
+    lastUpdated: normalizeDateField(draft.lastUpdated),
+    kickoffPrompt: draft.kickoffPrompt ?? VIBE_CODING_CODEX_KICKOFF_PROMPT,
+    executionNotes: draft.executionNotes ?? "",
+    steps: sourceSteps.map((step, index) => {
+      const definition = defaultSteps[index];
+      const nextBaseTitle = definition?.title ?? step.baseTitle ?? step.title;
+      const previousBaseTitle = step.baseTitle ?? step.title ?? nextBaseTitle;
+      const currentTitle = step.title ?? nextBaseTitle;
+      const shouldResetTitle =
+        previousBaseTitle.trim() !== nextBaseTitle.trim() &&
+        currentTitle.trim() === previousBaseTitle.trim();
+      const nextBasePrompt = definition?.prompt ?? step.basePrompt ?? step.prompt;
+      const previousBasePrompt = step.basePrompt ?? step.prompt ?? "";
+      const currentPrompt = step.prompt ?? nextBasePrompt;
+      const shouldResetPrompt =
+        previousBasePrompt.trim() !== nextBasePrompt.trim() &&
+        currentPrompt.trim() === previousBasePrompt.trim();
+
+      return {
+        id: step.id,
+        baseTitle: nextBaseTitle,
+        title: shouldResetTitle ? nextBaseTitle : currentTitle,
+        tool: definition?.tool ?? step.tool ?? "ChatGPT",
+        goal: definition?.goal ?? step.goal ?? "",
+        requiredInputs: definition?.requiredInputs ?? step.requiredInputs ?? [],
+        howToUse: definition?.howToUse ?? step.howToUse ?? [],
+        artifactLabel: definition?.artifactLabel ?? step.artifactLabel ?? "Artifact",
+        artifactPrefix: definition?.artifactPrefix ?? step.artifactPrefix ?? "artifact",
+        artifactTemplate: definition?.artifactTemplate ?? step.artifactTemplate ?? "[project-name]-artifact.md",
+        artifactUsedFor: definition?.artifactUsedFor ?? step.artifactUsedFor ?? "Use this in the next step.",
+        outputPlaceholder:
+          definition?.outputPlaceholder ??
+          step.outputPlaceholder ??
+          "[Paste the actual result of this step here]",
+        basePrompt: nextBasePrompt,
+        prompt: shouldResetPrompt ? nextBasePrompt : currentPrompt,
+        notes: step.notes ?? "",
+        completed: step.completed ?? false,
       };
     }),
   };
@@ -2566,10 +4350,35 @@ function normalizeTemplateDraft(template: TemplateDefinition, draft: TemplateDra
 function normalizeCodeReviewDraft(draft: CodeReviewDraft): CodeReviewDraft {
   return {
     ...draft,
-    sections: draft.sections.map((section, index) => ({
-      ...section,
-      prompts: section.prompts ?? codeReviewSections[index]?.prompts ?? [],
-    })),
+    version: draft.version ?? "",
+    owner: draft.owner ?? "",
+    lastChecked: normalizeDateField(draft.lastChecked),
+    reviewScopePrompt: draft.reviewScopePrompt ?? CODE_REVIEW_SCOPE_PROMPT_DEFAULT,
+    sections: draft.sections.map((section, index) => {
+      const nextBaseTitle = (
+        codeReviewSections[index]?.title ??
+        `Review section ${index + 1}`
+      ).toUpperCase();
+      const previousBaseTitle = section.baseTitle ?? section.title ?? nextBaseTitle;
+      const currentTitle = (section.title ?? previousBaseTitle).toUpperCase();
+      const shouldResetTitle =
+        previousBaseTitle.trim() !== nextBaseTitle.trim() &&
+        currentTitle.trim() === previousBaseTitle.trim();
+
+      return {
+        id: section.id,
+        baseTitle: nextBaseTitle,
+        title: shouldResetTitle ? nextBaseTitle : currentTitle,
+        checklist:
+          ("checklist" in section && typeof section.checklist === "string"
+            ? section.checklist
+            : "prompts" in section && Array.isArray(section.prompts)
+              ? section.prompts.join("\n")
+              : undefined) ?? codeReviewSections[index]?.checklist ?? "",
+        findings: section.findings ?? "",
+        checked: "checked" in section && typeof section.checked === "boolean" ? section.checked : false,
+      };
+    }),
   };
 }
 
@@ -2624,59 +4433,386 @@ function parseHelpDocContent(content: string) {
     .trim();
 }
 
-function buildTemplateFileName(template: TemplateDefinition, projectName: string) {
+function isSingleDocumentTemplateSlug(slug: string) {
+  return slug === "readme-md";
+}
+
+function isRawMarkdownTemplateSlug(slug: string) {
+  return slug === "readme-md";
+}
+
+function getTemplateDefaultDocumentContent(template: TemplateDefinition) {
+  if (template.slug === "readme-md") {
+    return README_DEFAULT_DOCUMENT;
+  }
+
+  return "";
+}
+
+function stripSingleDocumentEditorMarkdown(content: string) {
+  return content
+    .split("\n")
+    .filter((line) => line.trim() !== "---")
+    .map((line) => line.replace(/^#{1,6}\s+/, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function getTodayDateString() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDateField(value?: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value ?? "") ? value ?? "" : getTodayDateString();
+}
+
+function createTemplateMetaLines(template: TemplateDefinition, draft: TemplateDraft) {
+  return [
+    `Document: ${template.name}`,
+    `Version: ${resolveTemplateVersion(draft.version)}`,
+    `Owner: ${draft.owner.trim() || "N/A"}`,
+    `Created: ${normalizeDateField(draft.created)}`,
+    `Last updated: ${normalizeDateField(draft.lastUpdated)}`,
+  ];
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function createStructuredTemplateSectionId(title: string, index: number) {
+  return (
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || `template-section-${index + 1}`
+  );
+}
+
+function trimStructuredSectionLines(lines: string[]) {
+  const nextLines = [...lines];
+
+  while (nextLines[0]?.trim() === "") {
+    nextLines.shift();
+  }
+
+  while (nextLines[nextLines.length - 1]?.trim() === "") {
+    nextLines.pop();
+  }
+
+  return nextLines;
+}
+
+function getStructuredTemplateHeadingTitle(template: TemplateDefinition, line: string) {
+  const trimmed = line.trim();
+
+  if (template.slug === "dev-pipeline-master-document") {
+    if (
+      /^PHASE\s+\d+\s+—\s+/.test(trimmed) ||
+      trimmed === "PIPELINE RULES" ||
+      trimmed === "MINIMUM SUCCESS STATE"
+    ) {
+      return trimmed;
+    }
+  }
+
+  if (template.slug === "requirements-specification") {
+    if (/^\d+\.\s+/.test(trimmed)) {
+      return trimmed;
+    }
+  }
+
+  if (template.slug === "roadmap") {
+    const match = trimmed.match(/^##\s+(.+)$/);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
+function getStructuredTemplatePrefaceTitle(template: TemplateDefinition) {
+  if (template.slug === "dev-pipeline-master-document") {
+    return "Overview";
+  }
+
+  if (template.slug === "roadmap") {
+    return "Introduction";
+  }
+
+  return "";
+}
+
+function getDefaultTemplateSections(template: TemplateDefinition): TemplateDraftSection[] {
+  return template.sections.map((section) => ({
+    id: section.id,
+    baseTitle: section.title,
+    title: section.title,
+    baseHelpText: section.helpText,
+    helpText: section.helpText,
+    baseContent: section.starter,
+    content: section.starter,
+  }));
+}
+
+function stripDuplicateLeadingSectionHeading(title: string, content: string) {
+  const lines = content.split("\n");
+  const firstMeaningfulIndex = lines.findIndex((line) => line.trim() !== "");
+
+  if (firstMeaningfulIndex === -1) {
+    return content;
+  }
+
+  const firstMeaningfulLine = lines[firstMeaningfulIndex].trim();
+  const headingPattern = new RegExp(`^(?:##\\s+)?${escapeRegExp(title.trim())}$`);
+
+  if (!headingPattern.test(firstMeaningfulLine)) {
+    return content;
+  }
+
+  const nextLines = [...lines];
+  nextLines.splice(firstMeaningfulIndex, 1);
+
+  if (nextLines[firstMeaningfulIndex]?.trim() === "") {
+    nextLines.splice(firstMeaningfulIndex, 1);
+  }
+
+  return nextLines.join("\n").trim();
+}
+
+function normalizePipelineTemplateSections(sections: TemplateDraftSection[]) {
+  return sections
+    .filter((section) => section.title.trim().toLowerCase() !== "overview")
+    .map((section) => ({
+      ...section,
+      content: stripDuplicateLeadingSectionHeading(section.title, section.content),
+      baseContent: stripDuplicateLeadingSectionHeading(section.title, section.baseContent),
+    }));
+}
+
+function migrateLegacyDocumentContentToSections(
+  template: TemplateDefinition,
+  documentContent?: string,
+): TemplateDraftSection[] {
+  if (!documentContent?.trim()) {
+    return getDefaultTemplateSections(template);
+  }
+
+  if (
+    template.slug !== "dev-pipeline-master-document" &&
+    template.slug !== "requirements-specification" &&
+    template.slug !== "roadmap"
+  ) {
+    return getDefaultTemplateSections(template);
+  }
+
+  const sections: TemplateDraftSection[] = [];
+  const lines = documentContent.split("\n");
+  let currentTitle = getStructuredTemplatePrefaceTitle(template);
+  let currentLines: string[] = [];
+
+  function pushCurrent() {
+    const trimmedLines = trimStructuredSectionLines(currentLines).filter((line) => line.trim() !== "⸻");
+    if (!currentTitle && trimmedLines.length === 0) {
+      currentLines = [];
+      return;
+    }
+
+    const content = trimmedLines.join("\n");
+    sections.push({
+      id: createStructuredTemplateSectionId(currentTitle || `Section ${sections.length + 1}`, sections.length),
+      baseTitle: currentTitle || `Section ${sections.length + 1}`,
+      title: currentTitle || `Section ${sections.length + 1}`,
+      baseHelpText: "",
+      helpText: "",
+      baseContent: content,
+      content,
+    });
+    currentLines = [];
+  }
+
+  lines.forEach((line) => {
+    const headingTitle = getStructuredTemplateHeadingTitle(template, line);
+
+    if (headingTitle) {
+      if (currentTitle || trimStructuredSectionLines(currentLines).length > 0) {
+        pushCurrent();
+      }
+      currentTitle = headingTitle;
+      return;
+    }
+
+    if (line.trim() === "⸻") {
+      return;
+    }
+
+    currentLines.push(line);
+  });
+
+  if (currentTitle || trimStructuredSectionLines(currentLines).length > 0) {
+    pushCurrent();
+  }
+
+  return sections.length > 0 ? sections : getDefaultTemplateSections(template);
+}
+
+function createCodeReviewMetaLines(draft: CodeReviewDraft) {
+  return [
+    "Document: Code Review",
+    `Version: ${resolveTemplateVersion(draft.version)}`,
+    `Owner: ${draft.owner.trim() || "N/A"}`,
+    `Review date: ${normalizeDateField(draft.lastChecked)}`,
+  ];
+}
+
+function createVibeCodingMetaLines(draft: VibeCodingDraft) {
+  return [
+    "Document: Shipkit Build System",
+    `Version: ${resolveTemplateVersion(draft.version)}`,
+    `Owner: ${draft.owner.trim() || "N/A"}`,
+    `Created: ${normalizeDateField(draft.created)}`,
+    `Last updated: ${normalizeDateField(draft.lastUpdated)}`,
+  ];
+}
+
+function getVibeCodingStepDocumentLabel(step: Pick<VibeCodingStepDraft, "id" | "title">) {
+  if (step.id === "deep-research") {
+    return "Deep Research";
+  }
+  if (step.id === "prd-mvp") {
+    return "PRD";
+  }
+  if (step.id === "tech-design-mvp") {
+    return "Tech Design";
+  }
+  if (step.id === "notes-for-agent") {
+    return "Codex Setup";
+  }
+
+  return step.title.replace(/^Part\s+\d+\s+—\s+/, "").trim() || step.title;
+}
+
+function resolveTemplateVersion(version: string) {
+  return version.trim() || DEV_PROJECT_VERSION_DEFAULT;
+}
+
+function sanitizeVersionSegment(version: string) {
+  return resolveTemplateVersion(version)
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9.-]+/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function buildTemplateFileName(template: TemplateDefinition, projectName: string, version = "") {
+  if (template.slug === "readme-md") {
+    return "README";
+  }
+
+  if (template.slug === "roadmap") {
+    const projectSlug = slugify(projectName);
+    const versionSuffix = `-${sanitizeVersionSegment(version)}`;
+    return projectSlug ? `${projectSlug}-roadmap${versionSuffix}` : `roadmap${versionSuffix}`;
+  }
+
   const prefix = slugify(projectName) || getTemplateDefaultProjectPrefix(template);
   const lockedSuffix = getTemplateLockedSuffix(template);
-  return `${prefix}-${lockedSuffix}`;
+  const versionSuffix = `-${sanitizeVersionSegment(version)}`;
+  return `${prefix}-${lockedSuffix}${versionSuffix}`;
 }
 
 function getTemplateDefaultProjectPrefix(template: TemplateDefinition) {
-  if (template.slug === "universal-project-master-document") {
-    return "universal";
-  }
-
   return "dev";
 }
 
 function getTemplateLockedSuffix(template: TemplateDefinition) {
+  if (template.slug === "build-plan") {
+    return "build-plan";
+  }
+
   if (template.slug === "dev-pipeline-master-document") {
     return "pipeline-master-document";
+  }
+
+  if (template.slug === "requirements-specification") {
+    return "requirements-specification";
   }
 
   return "master-project-document";
 }
 
-function buildCodeReviewFileName(projectName: string) {
+function buildCodeReviewFileName(projectName: string, version = "") {
   const projectSlug = slugify(projectName);
-  return projectSlug ? `${projectSlug}-code-review` : "code-review";
+  const prefix = projectSlug ? `${projectSlug}-code-review` : "code-review";
+  return `${prefix}-${sanitizeVersionSegment(version)}`;
 }
 
 function buildHelpDocFileName(title: string, fallback: string) {
   return slugify(title) || fallback;
 }
 
+function buildVibeCodingFileName(projectName: string, version = "") {
+  const projectSlug = slugify(projectName);
+  const prefix = projectSlug ? `${projectSlug}-shipkit-build-system` : "shipkit-build-system";
+  return `${prefix}-${sanitizeVersionSegment(version)}`;
+}
+
+function buildVibeCodingArtifactFileName(step: Pick<VibeCodingStepDraft, "artifactPrefix">, projectName: string) {
+  const projectSlug = slugify(projectName);
+  return projectSlug ? `${projectSlug}-${step.artifactPrefix}.md` : `${step.artifactPrefix}.md`;
+}
+
+function getVibeCodingArtifactMarkdown(step: VibeCodingStepDraft, draft: VibeCodingDraft) {
+  const documentLabel = getVibeCodingStepDocumentLabel(step);
+
+  return formatMarkdownDocument(documentLabel, step.notes.trim() || step.outputPlaceholder, [
+    `Project: ${draft.title.trim() || "Untitled project"}`,
+    `Document: ${documentLabel}`,
+    `Version: ${resolveTemplateVersion(draft.version)}`,
+    `Owner: ${draft.owner.trim() || "N/A"}`,
+    `Created: ${normalizeDateField(draft.created)}`,
+    `Last updated: ${normalizeDateField(draft.lastUpdated)}`,
+  ]);
+}
+
 function generateHelpDocMarkdown(title: string, content: string) {
   return [`# ${title}`, "", content.trim() || "Pending content."].join("\n");
 }
 
-function getHelpDocCategory(doc: HelpDocument): Exclude<HelpDocFilter, "all"> {
-  if (doc.slug === "ai-input") {
+function generateVibeCodingMarkdown(
+  title: string,
+  draft: VibeCodingDraft,
+  metaLines: string[] = [],
+) {
+  const body = getVibeCodingExportSections(draft)
+    .flatMap((section) => [`## ${section.title}`, "", section.body.trim(), ""])
+    .join("\n")
+    .trim();
+
+  return formatMarkdownDocument(title, body, metaLines);
+}
+
+function getHelpDocCategory(doc: FrameworkDocument): Exclude<HelpDocFilter, "all"> {
+  if (doc.slug === "ai-critique-prompt") {
     return "ai";
   }
 
   return "product";
 }
 
-function getHelpDocCategoryLabel(doc: HelpDocument) {
+function getHelpDocCategoryLabel(doc: FrameworkDocument) {
   return getHelpDocCategory(doc) === "ai" ? "AI" : "Product";
 }
 
 function createDraftSectionId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function stripSectionNumber(title: string) {
-  return title.replace(/^\s*\d+\s*[\.\)]\s*/, "").trim();
 }
 
 function useSystemTheme() {
@@ -2727,63 +4863,190 @@ function usePersistentState<T>(key: string, initialValue: T) {
   return [state, setState] as const;
 }
 
-function generateTemplateMarkdown(title: string, sections: TemplateDraftSection[]) {
+function generateTemplateMarkdown(
+  title: string,
+  sections: TemplateDraftSection[],
+  metaLines: string[] = [],
+) {
+  const body = sections
+    .flatMap((section) => [`## ${section.title}`, "", section.content.trim(), ""])
+    .join("\n")
+    .trim();
+
+  return formatMarkdownDocument(title, body, metaLines);
+}
+
+function generatePipelineMarkdown(title: string, content: string, metaLines: string[] = []) {
+  return formatMarkdownDocument(title, formatSingleDocumentMarkdown(content), metaLines);
+}
+
+function formatMarkdownDocument(title: string, body: string, metaLines: string[] = []) {
+  const normalizedBody = body.trim() || "Pending content.";
+
   return [
     `# ${title}`,
     "",
-    ...sections.flatMap((section) => [
-      `## ${section.title}`,
-      "",
-      section.content.trim() || "Pending content.",
-      "",
-    ]),
+    ...(metaLines.length > 0
+      ? [
+          "## Metadata",
+          "",
+          ...metaLines.map((line) => `- **${line.split(":")[0]}:** ${line.split(":").slice(1).join(":").trim()}`),
+          "",
+          "---",
+          "",
+        ]
+      : []),
+    normalizedBody,
   ].join("\n");
 }
 
-function generateCodeReviewMarkdown(title: string, sections: CodeReviewSectionDraft[]) {
-  const checkedCount = sections.filter((section) => section.checked).length;
+function formatSingleDocumentMarkdown(content: string) {
+  const subheadings = new Set([
+    "Purpose:",
+    "Rule:",
+    "Goal:",
+    "Input:",
+    "Output:",
+    "Do NOT:",
+    "Status:",
+    "Must clarify:",
+    "Stop condition:",
+    "Method:",
+    "You fill in:",
+    "Prompt:",
+    "Instruction:",
+    "After this phase:",
+    "Create:",
+    "Must ensure:",
+    "Rules:",
+    "After each major step:",
+    "Review for:",
+    "In Scope",
+    "Out of Scope",
+    "Primary Flow",
+    "Alternative Flows",
+    "System Behavior",
+    "Unit Tests",
+    "Integration Tests",
+    "Manual Testing",
+  ]);
 
-  return [
-    `# ${title}`,
-    "",
-    `- Checked sections: ${checkedCount}/${sections.length}`,
-    "",
-    ...sections.flatMap((section) => [
+  return content
+    .split("\n")
+    .map((rawLine) => {
+      const line = rawLine.trimEnd();
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed === "⸻" || trimmed === "---") {
+        return trimmed === "⸻" || trimmed === "---" ? "" : line;
+      }
+
+      if (/^#{1,6}\s+/.test(trimmed)) {
+        return line;
+      }
+
+      if (/^PHASE\s+\d+\s+—\s+/.test(trimmed) || /^\d+\.\s+\S/.test(trimmed)) {
+        return `## ${trimmed}`;
+      }
+
+      if (trimmed === "PIPELINE RULES" || trimmed === "MINIMUM SUCCESS STATE") {
+        return `## ${trimmed}`;
+      }
+
+      if (subheadings.has(trimmed)) {
+        return `### ${trimmed}`;
+      }
+
+      return line;
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function generateCodeReviewMarkdown(
+  title: string,
+  sections: CodeReviewSectionDraft[],
+  metaLines: string[] = [],
+) {
+  const body = sections
+    .flatMap((section) => [
       `## ${section.title}`,
       "",
-      `- Status: ${section.checked ? "Checked" : "Open"}`,
-      `- Severity: ${section.severity || "None"}`,
-      `- Needs verification: ${section.needsVerification ? "Yes" : "No"}`,
+      section.findings.trim(),
       "",
-      "### Notes",
-      section.notes.trim() || "No notes.",
-      "",
-      "### Findings",
-      section.findings.trim() || "No findings recorded.",
-      "",
-    ]),
-  ].join("\n");
+    ])
+    .join("\n")
+    .trim();
+
+  return formatMarkdownDocument(title, body, metaLines);
 }
 
 function createCodeReviewSectionExport(section: CodeReviewSectionDraft) {
+  return section.findings.trim();
+}
+
+function getSingleDocumentContent(template: TemplateDefinition, draft: TemplateDraft) {
+  return draft.documentContent ?? getTemplateDefaultDocumentContent(template);
+}
+
+function getTemplateExportSections(template: TemplateDefinition, draft: TemplateDraft): ExportSection[] {
+  if (isSingleDocumentTemplateSlug(template.slug)) {
+    return [
+      {
+        title: "",
+        body: getSingleDocumentContent(template, draft),
+      },
+    ];
+  }
+
+  const sections = draft.sections.map((section) => ({
+    title: section.title,
+    body: section.content,
+  }));
+
+  return sections;
+}
+
+function getTemplateExportMarkdown(
+  template: TemplateDefinition,
+  draft: TemplateDraft,
+  title: string,
+  metaLines: string[] = [],
+) {
+  if (isSingleDocumentTemplateSlug(template.slug)) {
+    const content = getSingleDocumentContent(template, draft);
+    return isRawMarkdownTemplateSlug(template.slug)
+      ? content.trim()
+      : generatePipelineMarkdown(title, content, metaLines);
+  }
+
+  return generateTemplateMarkdown(title, draft.sections, metaLines);
+}
+
+function getCodeReviewExportSections(draft: CodeReviewDraft): ExportSection[] {
+  return draft.sections.map((section) => ({
+    title: section.title,
+    body: createCodeReviewSectionExport(section),
+  }));
+}
+
+function getVibeCodingExportSections(draft: VibeCodingDraft): ExportSection[] {
+  const stepSections = draft.steps.map((step) => ({
+    title: step.title,
+    body: step.notes.trim() || step.outputPlaceholder,
+  }));
+
   return [
-    `- Status: ${section.checked ? "Checked" : "Open"}`,
-    `- Severity: ${section.severity || "None"}`,
-    `- Needs verification: ${section.needsVerification ? "Yes" : "No"}`,
-    "",
-    "Notes",
-    section.notes.trim() || "No notes.",
-    "",
-    "Findings",
-    section.findings.trim() || "No findings recorded.",
-  ].join("\n");
+    ...stepSections,
+  ];
+}
+
+function getVibeCodingExportMarkdown(draft: VibeCodingDraft, title: string) {
+  return generateVibeCodingMarkdown(title, draft, createVibeCodingMetaLines(draft));
 }
 
 function getTemplateLens(template: TemplateDefinition): Exclude<TemplateFilter, "all"> {
-  if (template.slug === "universal-project-master-document") {
-    return "general";
-  }
-
   if (template.category === "pipeline") {
     return "pipeline";
   }
@@ -2794,10 +5057,6 @@ function getTemplateLens(template: TemplateDefinition): Exclude<TemplateFilter, 
 function getTemplateLensLabel(template: TemplateDefinition) {
   const lens = getTemplateLens(template);
 
-  if (lens === "general") {
-    return "General";
-  }
-
   if (lens === "pipeline") {
     return "Pipeline";
   }
@@ -2805,15 +5064,123 @@ function getTemplateLensLabel(template: TemplateDefinition) {
   return "Development";
 }
 
-function splitTextBlocks(text: string) {
+function CopyPromptField({
+  label,
+  prompt,
+  buttonLabel = "Copy",
+  textareaHeight,
+}: {
+  label: string;
+  prompt: string;
+  buttonLabel?: string;
+  textareaHeight?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      downloadTextFile("copied-prompt.txt", prompt);
+    }
+  }
+
+  return (
+    <Field label={label}>
+      <div className="space-y-2">
+        <Textarea value={prompt} readOnly className={`${textareaHeight ?? "min-h-[220px]"} text-sm leading-7`} rows={8} />
+        <Button variant="secondary" onClick={handleCopy}>
+          <Copy className="size-4" />
+          {copied ? "Copied" : buttonLabel}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
+function CopyableEditableTextareaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 8,
+  className,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      downloadTextFile("copied-field.txt", value);
+    }
+  }
+
+  return (
+    <Field label={label}>
+      <div className="space-y-2">
+        <Textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          rows={rows}
+          className={className}
+        />
+        <Button variant="secondary" onClick={handleCopy}>
+          <Copy className="size-4" />
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+    </Field>
+  );
+}
+
+function splitTextBlocks(text: string, emptyText = "Pending content.") {
   const trimmed = text.trim();
 
   if (!trimmed) {
-    return [{ type: "p" as const, lines: ["Pending content."] }];
+    return emptyText ? [{ type: "p" as const, lines: [emptyText] }] : [];
   }
 
   return trimmed.split(/\n{2,}/).map((block) => {
     const lines = block.split("\n").filter(Boolean);
+
+    if (lines.length === 1 && lines[0].trim() === "⸻") {
+      return { type: "separator" as const, lines: [] };
+    }
+
+    if (lines.length === 1 && lines[0].trim() === "---") {
+      return { type: "separator" as const, lines: [] };
+    }
+
+    if (lines.length === 1 && /^#{1,6}\s+/.test(lines[0].trim())) {
+      return {
+        type: "heading" as const,
+        lines: [lines[0].trim().replace(/^#{1,6}\s+/, "")],
+      };
+    }
+
+    if (lines.length === 1 && /^\d+\.\s+\S/.test(lines[0].trim())) {
+      return { type: "heading" as const, lines: [lines[0].trim()] };
+    }
+
+    if (
+      lines.length === 1 &&
+      /^(PHASE\s+\d+\s+—\s+|PIPELINE RULES$|MINIMUM SUCCESS STATE$)/.test(lines[0].trim())
+    ) {
+      return { type: "heading" as const, lines: [lines[0].trim()] };
+    }
 
     if (lines.every((line) => /^[-*]\s+/.test(line.trim()))) {
       return {
