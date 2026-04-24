@@ -1,0 +1,31 @@
+{
+  "name": "Shipkit",
+  "short_name": "Shipkit",
+  "icons": [
+    {
+      "src": "/shipkit-favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/shipkit-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/shipkit-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#212121",
+  "background_color": "#fcfcfc",
+  "display": "standalone"
+}

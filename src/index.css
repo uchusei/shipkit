@@ -1,0 +1,435 @@
+@import "tailwindcss";
+
+:root {
+  --accent: #91ff6a;
+  --accent-alt: #d9ffcb;
+  --success: #5fa97c;
+  --danger: #d96d5e;
+  --font-sans: "Inter", "Geist", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    "IBM Plex Mono", "JetBrains Mono", "Cascadia Code", monospace;
+  color-scheme: light;
+}
+
+:root,
+:root[data-theme="light"] {
+  --background: #fcfcfc;
+  --background-elevated: #ffffff;
+  --background-soft: #fdfdfb;
+  --background-muted: rgba(17, 17, 17, 0.04);
+  --foreground: #111111;
+  --foreground-soft: rgba(17, 17, 17, 0.84);
+  --muted-foreground: rgba(17, 17, 17, 0.56);
+  --border: rgba(17, 17, 17, 0.04);
+  --border-strong: rgba(17, 17, 17, 0.07);
+  --sidebar-bg: rgba(252, 252, 252, 0.74);
+  --surface-top: rgba(255, 255, 255, 0.8);
+  --surface-bottom: rgba(255, 255, 255, 1);
+  --subtle-top: rgba(255, 255, 255, 0.9);
+  --subtle-bottom: rgba(255, 255, 255, 0.98);
+  --hero-top: rgba(255, 255, 255, 0.84);
+  --hero-bottom: rgba(255, 255, 255, 0.98);
+  --document-bg: rgba(255, 255, 255, 0.96);
+  --floating-bg: rgba(255, 255, 255, 0.96);
+  --chrome-soft: rgba(255, 255, 255, 0.72);
+  --chrome-hover: rgba(255, 255, 255, 0.92);
+  --chrome-strong: rgba(255, 255, 255, 0.9);
+  --chrome-focus: rgba(145, 255, 106, 0.45);
+  --input-bg: rgba(255, 255, 255, 0.88);
+  --input-border: rgba(17, 17, 17, 0.05);
+  --selection-bg: rgba(145, 255, 106, 0.28);
+  --accent-contrast: #111111;
+  --accent-ink: #4ea235;
+  --success-bg: rgba(95, 169, 124, 0.12);
+  --success-border: rgba(95, 169, 124, 0.22);
+  --success-text: #2c6d45;
+  --warning-bg: rgba(207, 153, 80, 0.14);
+  --warning-border: rgba(207, 153, 80, 0.22);
+  --warning-text: #8a5b21;
+  --shadow-soft: 0 18px 44px rgba(15, 15, 15, 0.08);
+  --shadow-panel: 0 26px 90px rgba(15, 15, 15, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: #111111;
+    --background-elevated: #161616;
+    --background-soft: #1b1b1b;
+    --background-muted: rgba(255, 255, 255, 0.04);
+    --foreground: #fcfcfc;
+    --foreground-soft: rgba(252, 252, 252, 0.86);
+    --muted-foreground: rgba(252, 252, 252, 0.56);
+    --border: rgba(252, 252, 252, 0.08);
+    --border-strong: rgba(252, 252, 252, 0.14);
+    --sidebar-bg: rgba(11, 11, 11, 0.88);
+    --surface-top: rgba(255, 255, 255, 0.026);
+    --surface-bottom: rgba(255, 255, 255, 0.012);
+    --subtle-top: rgba(255, 255, 255, 0.018);
+    --subtle-bottom: rgba(255, 255, 255, 0.008);
+    --hero-top: rgba(255, 255, 255, 0.02);
+    --hero-bottom: rgba(255, 255, 255, 0.01);
+    --document-bg: rgba(22, 22, 22, 0.96);
+    --floating-bg: rgba(22, 22, 22, 0.97);
+    --chrome-soft: rgba(255, 255, 255, 0.035);
+    --chrome-hover: rgba(255, 255, 255, 0.06);
+    --chrome-strong: rgba(255, 255, 255, 0.08);
+    --chrome-focus: rgba(145, 255, 106, 0.45);
+    --input-bg: rgba(255, 255, 255, 0.03);
+    --input-border: rgba(255, 255, 255, 0.08);
+    --selection-bg: rgba(145, 255, 106, 0.28);
+    --accent-contrast: #101216;
+    --accent-ink: #91ff6a;
+    --success-bg: rgba(95, 169, 124, 0.12);
+    --success-border: rgba(95, 169, 124, 0.22);
+    --success-text: #9fe4ba;
+    --warning-bg: rgba(207, 153, 80, 0.14);
+    --warning-border: rgba(207, 153, 80, 0.22);
+    --warning-text: #f0bf7a;
+    --shadow-soft: 0 18px 44px rgba(0, 0, 0, 0.34);
+    --shadow-panel: 0 26px 92px rgba(0, 0, 0, 0.44);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #111111;
+  --background-elevated: #161616;
+  --background-soft: #1b1b1b;
+  --background-muted: rgba(255, 255, 255, 0.04);
+  --foreground: #fcfcfc;
+  --foreground-soft: rgba(252, 252, 252, 0.86);
+  --muted-foreground: rgba(252, 252, 252, 0.56);
+  --border: rgba(252, 252, 252, 0.08);
+  --border-strong: rgba(252, 252, 252, 0.14);
+  --sidebar-bg: rgba(11, 11, 11, 0.88);
+  --surface-top: rgba(255, 255, 255, 0.026);
+  --surface-bottom: rgba(255, 255, 255, 0.012);
+  --subtle-top: rgba(255, 255, 255, 0.018);
+  --subtle-bottom: rgba(255, 255, 255, 0.008);
+  --hero-top: rgba(255, 255, 255, 0.02);
+  --hero-bottom: rgba(255, 255, 255, 0.01);
+  --document-bg: rgba(22, 22, 22, 0.96);
+  --floating-bg: rgba(22, 22, 22, 0.97);
+  --chrome-soft: rgba(255, 255, 255, 0.035);
+  --chrome-hover: rgba(255, 255, 255, 0.06);
+  --chrome-strong: rgba(255, 255, 255, 0.08);
+  --chrome-focus: rgba(145, 255, 106, 0.45);
+  --input-bg: rgba(255, 255, 255, 0.03);
+  --input-border: rgba(255, 255, 255, 0.08);
+  --selection-bg: rgba(145, 255, 106, 0.28);
+  --accent-contrast: #101216;
+  --accent-ink: #91ff6a;
+  --success-bg: rgba(95, 169, 124, 0.12);
+  --success-border: rgba(95, 169, 124, 0.22);
+  --success-text: #9fe4ba;
+  --warning-bg: rgba(207, 153, 80, 0.14);
+  --warning-border: rgba(207, 153, 80, 0.22);
+  --warning-text: #f0bf7a;
+  --shadow-soft: 0 18px 44px rgba(0, 0, 0, 0.34);
+  --shadow-panel: 0 26px 92px rgba(0, 0, 0, 0.44);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-background-elevated: var(--background-elevated);
+  --color-background-soft: var(--background-soft);
+  --color-background-muted: var(--background-muted);
+  --color-foreground: var(--foreground);
+  --color-foreground-soft: var(--foreground-soft);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-alt: var(--accent-alt);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+
+  body {
+    @apply font-sans text-foreground antialiased;
+    margin: 0;
+    min-height: 100vh;
+    scrollbar-width: none;
+    background:
+      radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 24%),
+      radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 12%, transparent), transparent 18%),
+      var(--background);
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  ::selection {
+    background: var(--selection-bg);
+    color: #ffffff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--foreground) 14%, transparent);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  .app-grid {
+    @apply min-h-screen lg:grid lg:grid-cols-[320px_minmax(0,1fr)];
+  }
+
+  .app-grid.sidebar-collapsed {
+    display: block;
+  }
+
+  .sidebar-shell {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--foreground) 2%, transparent), transparent),
+      var(--sidebar-bg);
+    backdrop-filter: blur(26px) saturate(1.18);
+  }
+
+  .main-shell {
+    @apply relative min-w-0;
+  }
+
+  .sidebar-reveal {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background:
+      linear-gradient(180deg, var(--surface-top), var(--surface-bottom)),
+      var(--background-elevated);
+    box-shadow: var(--shadow-soft);
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--foreground);
+    backdrop-filter: blur(20px) saturate(1.1);
+  }
+
+  .surface {
+    background:
+      linear-gradient(180deg, var(--surface-top), var(--surface-bottom)),
+      var(--background-elevated);
+    border: 1px solid var(--border);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--foreground) 3%, transparent),
+      var(--shadow-soft);
+    backdrop-filter: blur(22px) saturate(1.12);
+    @apply rounded-[24px];
+  }
+
+  .surface-subtle {
+    background:
+      linear-gradient(180deg, var(--subtle-top), var(--subtle-bottom)),
+      var(--background-soft);
+    border: 1px solid color-mix(in srgb, var(--foreground) 6%, transparent);
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(18px) saturate(1.08);
+    @apply rounded-[20px];
+  }
+
+  .hero-surface {
+    background:
+      linear-gradient(180deg, var(--hero-top), var(--hero-bottom)),
+      var(--background-elevated);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--foreground) 2%, transparent), var(--shadow-panel);
+    backdrop-filter: blur(24px) saturate(1.1);
+    @apply rounded-[26px];
+  }
+
+  .editor-grid {
+    @apply grid gap-5;
+  }
+
+  .workspace-columns-both {
+    @apply xl:grid-cols-[260px_minmax(0,1fr)_380px];
+  }
+
+  .workspace-columns-left {
+    @apply xl:grid-cols-[260px_minmax(0,1fr)];
+  }
+
+  .workspace-columns-right {
+    @apply xl:grid-cols-[minmax(0,1fr)_380px];
+  }
+
+  .workspace-columns-main {
+    @apply xl:grid-cols-[minmax(0,1fr)];
+  }
+
+  .document-preview {
+    background:
+      linear-gradient(180deg, var(--subtle-top), var(--subtle-bottom)),
+      var(--document-bg);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--foreground) 2%, transparent);
+    backdrop-filter: blur(20px) saturate(1.08);
+    @apply rounded-[24px] px-6 py-5;
+  }
+
+  .mono-label {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  .section-anchor {
+    scroll-margin-top: 96px;
+  }
+
+  .page-frame {
+    animation: rise-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .stagger-enter {
+    animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--enter-delay, 0s);
+  }
+
+  .soft-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--foreground) 12%, transparent), transparent);
+  }
+
+  .floating-chip {
+    background: color-mix(in srgb, var(--accent) 10%, var(--background-elevated));
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--accent) 18%, transparent);
+    @apply rounded-full;
+  }
+
+  .scroll-panel {
+    @apply max-h-[calc(100vh-12rem)] overflow-y-auto pr-1;
+  }
+
+  .sticky-stack-scroll {
+    @apply xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pr-1;
+    overscroll-behavior: contain;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .sticky-stack-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .floating-layer {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+
+  .floating-window {
+    pointer-events: auto;
+    position: fixed;
+    overflow: hidden;
+    border-radius: 22px;
+    border: 1px solid var(--border-strong);
+    background:
+      linear-gradient(180deg, var(--surface-top), var(--surface-bottom)),
+      var(--floating-bg);
+    box-shadow:
+      var(--shadow-panel),
+      inset 0 1px 0 color-mix(in srgb, var(--foreground) 3%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .floating-window-header {
+    @apply flex items-center justify-between gap-3 px-4 py-3;
+    cursor: grab;
+  }
+
+  .floating-window-header:active {
+    cursor: grabbing;
+  }
+
+  .floating-window-body {
+    @apply h-[calc(100%-3.75rem)] overflow-auto px-4 pb-4 pt-3;
+  }
+
+  .floating-window-resize {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 18px;
+    height: 18px;
+    border-right: 2px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+    border-bottom: 2px solid color-mix(in srgb, var(--foreground) 30%, transparent);
+    border-radius: 0 0 8px 0;
+    cursor: nwse-resize;
+    opacity: 0.8;
+  }
+
+  .floating-window-resize:hover {
+    border-right-color: var(--accent);
+    border-bottom-color: var(--accent);
+    opacity: 1;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-gradient {
+    color: var(--foreground);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
