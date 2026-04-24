@@ -1,4 +1,4 @@
-![Shipkit](assets/shitkit-readme-promo.png)
+![Shipkit](assets/shipkit-readme-promo.png)
 
 # Shipkit
 
