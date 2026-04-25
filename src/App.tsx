@@ -38,7 +38,9 @@ import { Button, Checkbox, Field, Input, Panel, StatusPill, Textarea } from "@/c
 import {
   README_DEFAULT_DOCUMENT,
   codeReviewSections,
+  courseDocuments,
   frameworkDocuments,
+  type CourseDocument,
   templates,
   type FrameworkDocument,
   type TemplateDefinition,
@@ -116,6 +118,8 @@ type HelpDocDraft = {
   content: string;
   updatedAt: string;
 };
+
+type LibraryDocument = FrameworkDocument | CourseDocument;
 
 type VibeCodingStepDraft = {
   id: string;
@@ -320,6 +324,10 @@ function App() {
     "shipkit-help-doc-drafts-v1",
     {},
   );
+  const [courseDrafts, setCourseDrafts] = usePersistentState<Record<string, HelpDocDraft>>(
+    "shipkit-course-drafts-v1",
+    {},
+  );
   const [vibeCodingDraft, setVibeCodingDraft] = usePersistentState<VibeCodingDraft>(
     "shipkit-vibe-coding-draft-v1",
     createVibeCodingDraft(),
@@ -378,7 +386,7 @@ function App() {
           </button>
         ) : null}
         <Routes>
-          <Route path="/" element={<Navigate to="/templates" replace />} />
+          <Route path="/" element={<HomePage />} />
           <Route
             path="/templates"
             element={<TemplateLibrary templateDrafts={templateDrafts} />}
@@ -425,8 +433,14 @@ function App() {
             element={<HelpDocsLibrary helpDocDrafts={helpDocDrafts} onChange={setHelpDocDrafts} />}
           />
           <Route path="/frameworks/:docSlug" element={<Navigate to="/frameworks" replace />} />
+          <Route
+            path="/courses"
+            element={<CoursesLibrary courseDrafts={courseDrafts} onChange={setCourseDrafts} />}
+          />
+          <Route path="/courses/:docSlug" element={<Navigate to="/courses" replace />} />
           <Route path="/help" element={<Navigate to="/frameworks" replace />} />
           <Route path="/help/:docSlug" element={<Navigate to="/frameworks" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
@@ -443,11 +457,11 @@ function Sidebar({
   onCollapse: () => void;
 }) {
   return (
-    <aside className="sidebar-shell sticky top-0 h-screen border-r border-border px-5 py-6">
+    <aside className="sidebar-shell sticky top-0 border-r border-border px-5 py-6">
       <div className="space-y-5">
         <div className="surface p-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-4">
+            <NavLink to="/" className="flex min-w-0 items-center gap-4">
               <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-white/8 bg-[#212121] text-lg font-medium text-accent shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
                 S
               </div>
@@ -456,13 +470,13 @@ function Sidebar({
                   Shipkit
                 </h1>
               </div>
-            </div>
+            </NavLink>
             <Button variant="ghost" size="sm" onClick={onCollapse}>
               <PanelLeftClose className="size-4" />
             </Button>
           </div>
           <p className="mt-4 max-w-sm text-[0.98rem] leading-7 text-muted-foreground">
-            Emmas Shipkit for building and managing products.
+            Emma’s Shipkit — build, learn, and ship.
           </p>
         </div>
 
@@ -491,6 +505,12 @@ function Sidebar({
               icon={<BookOpen className="size-4" />}
               title="Frameworks"
               description="Product pressure-testing frameworks."
+            />
+            <SidebarLink
+              to="/courses"
+              icon={<BookOpen className="size-4" />}
+              title="Courses"
+              description="Interactive AI course prompt templates."
             />
           </nav>
         </div>
@@ -543,7 +563,7 @@ function Sidebar({
       rel="noreferrer"
       className="underline hover:text-foreground"
     >
-      v0.1.0
+      v0.1.5
     </a>
   </p>
 
@@ -581,6 +601,110 @@ function Sidebar({
   </p>
 </div>
     </aside>
+  );
+}
+
+function HomePage() {
+  const productAreas = [
+    {
+      title: "Templates",
+      description: "Open structured project documents, edit them in-app, and export them as Markdown or PDF.",
+      to: "/templates",
+      eyebrow: "Workspace",
+    },
+    {
+      title: "Vibe Coding",
+      description: "Go from research to PRD, tech design, Codex setup, and step-by-step execution.",
+      to: "/vibe-coding",
+      eyebrow: "Workflow",
+    },
+    {
+      title: "Code Review",
+      description: "Run broad review checklists, capture findings, and export a real review document.",
+      to: "/code-review",
+      eyebrow: "Review",
+    },
+    {
+      title: "Frameworks",
+      description: "Use reusable product and AI critique frameworks as editable working documents.",
+      to: "/frameworks",
+      eyebrow: "Reference",
+    },
+    {
+      title: "Courses",
+      description: "Open interactive AI course prompts for product, frontend, and cybersecurity learning.",
+      to: "/courses",
+      eyebrow: "Learning",
+    },
+  ];
+
+  return (
+    <div className="page-frame mx-auto flex max-w-[1450px] flex-col gap-6 px-4 py-6 md:px-6">
+      <div className="hero-surface p-6 md:p-8">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] xl:items-end">
+          <div className="space-y-4">
+            <div className="mono-label">Shipkit</div>
+            <h1 className="max-w-4xl text-4xl font-semibold tracking-[0.01em] text-balance text-gradient md:text-6xl">
+              One workspace for structured product work.
+            </h1>
+            <p className="max-w-3xl text-base leading-8 text-foreground-soft md:text-lg">
+              Shipkit is a clean document tool I built for adapting product templates, running code reviews,
+              keeping reusable frameworks, and moving from idea to MVP with a guided workflow.
+            </p>
+          </div>
+
+          <div className="surface-subtle px-5 py-5">
+            <div className="mono-label">Quick start</div>
+            <div className="mt-4 grid gap-3">
+              <LandingActionLink to="/templates" label="Open Templates" />
+              <LandingActionLink to="/vibe-coding" label="Open Vibe Coding" />
+              <LandingActionLink to="/code-review" label="Open Code Review" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        {productAreas.map((area, index) => (
+          <Panel
+            key={area.to}
+            className="stagger-enter"
+            style={{ ["--enter-delay" as string]: `${0.05 * index + 0.04}s` }}
+          >
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <StatusPill tone="default">{area.eyebrow}</StatusPill>
+                <h2 className="text-2xl font-semibold tracking-[0.005em]">{area.title}</h2>
+              </div>
+              <p className="max-w-[42ch] text-sm leading-7 text-foreground-soft">
+                {area.description}
+              </p>
+              <div className="pt-1">
+                <LandingActionLink to={area.to} label={`Open ${area.title}`} />
+              </div>
+            </div>
+          </Panel>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LandingActionLink({
+  to,
+  label,
+}: {
+  to: string;
+  label: string;
+}) {
+  return (
+    <NavLink
+      to={to}
+      className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[color:var(--chrome-focus)] bg-accent px-4 py-2.5 text-sm font-medium tracking-[0.01em] text-[color:var(--accent-contrast)] shadow-[0_12px_28px_color-mix(in_srgb,var(--accent)_28%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-105"
+    >
+      <ArrowUpRight className="size-4" />
+      {label}
+    </NavLink>
   );
 }
 
@@ -2801,6 +2925,7 @@ function CodeReviewPage({
 }
 
 type HelpDocFilter = "all" | "ai" | "product";
+type CourseFilter = "all" | "frontend" | "product" | "security";
 
 function HelpDocsLibrary({
   helpDocDrafts,
@@ -2916,16 +3041,133 @@ function HelpDocsLibrary({
   );
 }
 
+function CoursesLibrary({
+  courseDrafts,
+  onChange,
+}: {
+  courseDrafts: Record<string, HelpDocDraft>;
+  onChange: React.Dispatch<React.SetStateAction<Record<string, HelpDocDraft>>>;
+}) {
+  const [filter, setFilter] = useState<CourseFilter>("all");
+  const [activeDocSlug, setActiveDocSlug] = useState<string | null>(null);
+  const filteredDocs = courseDocuments.filter((doc) => {
+    if (filter === "all") {
+      return true;
+    }
+
+    return getCourseCategory(doc) === filter;
+  });
+  const activeCourseDoc = courseDocuments.find((doc) => doc.slug === activeDocSlug) ?? null;
+
+  return (
+    <div className="page-frame mx-auto flex max-w-[1450px] flex-col gap-6 px-4 py-6 md:px-6">
+      <PageIntro
+        eyebrow="Courses"
+        title="Courses"
+        description="Interactive AI course prompt templates for structured learning in product, frontend, and cybersecurity."
+      />
+
+      <div className="surface-subtle flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="mono-label">Filter</div>
+          <p className="mt-2 text-sm leading-6 text-foreground-soft">
+            Narrow the library to the kind of course prompt you want to use.
+          </p>
+        </div>
+        <div className="w-full max-w-[720px]">
+          <ControlGroup
+            label="Visible courses"
+            options={[
+              { value: "all", label: "All" },
+              { value: "frontend", label: "Frontend" },
+              { value: "product", label: "Product" },
+              { value: "security", label: "Security" },
+            ]}
+            value={filter}
+            onChange={(value) => setFilter(value as CourseFilter)}
+          />
+        </div>
+      </div>
+
+      <div className="grid items-start gap-4 xl:grid-cols-3">
+        {filteredDocs.map((doc, index) => {
+          const draft = normalizeHelpDocDraft(doc, courseDrafts[doc.slug]);
+          const editedCount = draft ? countCustomizedHelpDocSections(draft) : 0;
+
+          return (
+            <Panel
+              key={doc.id}
+              className="stagger-enter self-start"
+              style={{ ["--enter-delay" as string]: `${0.05 * index + 0.04}s` }}
+            >
+              <div className="space-y-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <StatusPill tone="default">{getCourseCategoryLabel(doc)}</StatusPill>
+                    <h2 className="text-xl font-semibold tracking-[0.005em]">{doc.title}</h2>
+                  </div>
+                  {editedCount > 0 ? (
+                    <StatusPill tone="success">{editedCount} edits</StatusPill>
+                  ) : null}
+                </div>
+
+                <p className="max-w-[32ch] text-sm leading-6 text-foreground-soft">
+                  {doc.description}
+                </p>
+
+                <div className="block pt-1">
+                  <Button
+                    variant="primary"
+                    className="w-full"
+                    onClick={() => setActiveDocSlug(doc.slug)}
+                  >
+                    <FilePenLine data-icon="inline-start" className="size-4" />
+                    Open course
+                  </Button>
+                </div>
+              </div>
+            </Panel>
+          );
+        })}
+      </div>
+
+      {activeCourseDoc ? (
+        <HelpDocFloatingCard
+          doc={activeCourseDoc}
+          draft={normalizeHelpDocDraft(activeCourseDoc, courseDrafts[activeCourseDoc.slug])}
+          onChange={(updater) => {
+            onChange((current) => {
+              const base = normalizeHelpDocDraft(activeCourseDoc, current[activeCourseDoc.slug]);
+              const next = updater(base);
+              return {
+                ...current,
+                [activeCourseDoc.slug]: {
+                  ...next,
+                  updatedAt: new Date().toISOString(),
+                },
+              };
+            });
+          }}
+          onClose={() => setActiveDocSlug(null)}
+          copyLabel="Copy contents"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function HelpDocFloatingCard({
   doc,
   draft,
   onChange,
   onClose,
+  copyLabel = "Copy contents",
 }: {
-  doc: FrameworkDocument;
+  doc: LibraryDocument;
   draft: HelpDocDraft;
   onChange: (updater: (current: HelpDocDraft) => HelpDocDraft) => void;
   onClose: () => void;
+  copyLabel?: string;
 }) {
   const [copied, setCopied] = useState(false);
   const resolvedTitle = doc.title;
@@ -2959,7 +3201,7 @@ function HelpDocFloatingCard({
           <div className="flex justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={handleCopyContents}>
               <Copy className="size-4" />
-              {copied ? "Copied" : "Copy contents"}
+              {copied ? "Copied" : copyLabel}
             </Button>
             <Button variant="ghost" size="sm" onClick={onClose}>
               <X className="size-4" />
@@ -3961,7 +4203,7 @@ function DocumentPreview({
   emptyText?: string;
 }) {
   return (
-    <div className="document-preview max-h-[calc(100vh-18rem)] overflow-auto">
+    <div className="document-preview document-preview-scroll">
       <div className="border-b border-border pb-4">
         <div className="mono-label">Preview</div>
         <h3 className="mt-2 text-xl font-semibold tracking-[0.005em]">{title}</h3>
@@ -4164,7 +4406,7 @@ function createVibeCodingDraft(): VibeCodingDraft {
   };
 }
 
-function createHelpDocDraft(doc: FrameworkDocument): HelpDocDraft {
+function createHelpDocDraft(doc: LibraryDocument): HelpDocDraft {
   const baseContent = parseHelpDocContent(doc.content);
   return {
     title: doc.title,
@@ -4176,7 +4418,7 @@ function createHelpDocDraft(doc: FrameworkDocument): HelpDocDraft {
 }
 
 function normalizeHelpDocDraft(
-  doc: FrameworkDocument,
+  doc: LibraryDocument,
   draft?: HelpDocDraft | (Partial<HelpDocDraft> & { sections?: HelpDocSectionDraft[] }),
 ) {
   if (!draft) {
@@ -4809,6 +5051,32 @@ function getHelpDocCategory(doc: FrameworkDocument): Exclude<HelpDocFilter, "all
 
 function getHelpDocCategoryLabel(doc: FrameworkDocument) {
   return getHelpDocCategory(doc) === "ai" ? "AI" : "Product";
+}
+
+function getCourseCategory(doc: CourseDocument): Exclude<CourseFilter, "all"> {
+  if (doc.slug === "frontend-learning-prompt") {
+    return "frontend";
+  }
+
+  if (doc.slug === "product-management-learning-prompt") {
+    return "product";
+  }
+
+  return "security";
+}
+
+function getCourseCategoryLabel(doc: CourseDocument) {
+  const category = getCourseCategory(doc);
+
+  if (category === "frontend") {
+    return "Frontend";
+  }
+
+  if (category === "product") {
+    return "Product";
+  }
+
+  return "Security";
 }
 
 function createDraftSectionId(prefix: string) {

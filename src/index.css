@@ -156,6 +156,7 @@
   html {
     scroll-behavior: smooth;
     scrollbar-width: none;
+    min-height: 100%;
   }
 
   html::-webkit-scrollbar,
@@ -169,11 +170,17 @@
     @apply font-sans text-foreground antialiased;
     margin: 0;
     min-height: 100vh;
+    min-height: 100dvh;
     scrollbar-width: none;
     background:
       radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 24%),
       radial-gradient(circle at top right, color-mix(in srgb, var(--accent-alt) 12%, transparent), transparent 18%),
       var(--background);
+  }
+
+  body,
+  #root {
+    min-height: 100%;
   }
 
   button,
@@ -213,6 +220,8 @@
 @layer components {
   .app-grid {
     @apply min-h-screen lg:grid lg:grid-cols-[320px_minmax(0,1fr)];
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .app-grid.sidebar-collapsed {
@@ -220,6 +229,8 @@
   }
 
   .sidebar-shell {
+    min-height: 100vh;
+    min-height: 100dvh;
     background:
       linear-gradient(180deg, color-mix(in srgb, var(--foreground) 2%, transparent), transparent),
       var(--sidebar-bg);
@@ -228,6 +239,8 @@
 
   .main-shell {
     @apply relative min-w-0;
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .sidebar-reveal {
@@ -344,13 +357,21 @@
 
   .scroll-panel {
     @apply max-h-[calc(100vh-12rem)] overflow-y-auto pr-1;
+    max-height: calc(100dvh - 12rem);
   }
 
   .sticky-stack-scroll {
     @apply xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pr-1;
+    max-height: calc(100dvh - 3rem);
     overscroll-behavior: contain;
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  .document-preview-scroll {
+    max-height: calc(100vh - 18rem);
+    max-height: calc(100dvh - 18rem);
+    overflow: auto;
   }
 
   .sticky-stack-scroll::-webkit-scrollbar {
