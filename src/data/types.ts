@@ -24,6 +24,14 @@ export type FrameworkDocument = {
   content: string;
 };
 
+export type CourseDocument = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  content: string;
+};
+
 export type CodeReviewSectionDefinition = {
   id: string;
   title: string;
