@@ -73,7 +73,6 @@ type TemplateDraftSection = {
 
 type TemplateDraft = {
   title: string;
-  version: string;
   owner: string;
   created: string;
   lastUpdated: string;
@@ -95,7 +94,6 @@ type CodeReviewSectionDraft = {
 
 type CodeReviewDraft = {
   title: string;
-  version: string;
   owner: string;
   lastChecked: string;
   fileName: string;
@@ -142,7 +140,6 @@ type VibeCodingStepDraft = {
 
 type VibeCodingDraft = {
   title: string;
-  version: string;
   owner: string;
   created: string;
   lastUpdated: string;
@@ -168,8 +165,6 @@ type ThemePreference = "system" | "light" | "dark";
 type EditorLayoutMode = "single" | "split";
 type EditorFontScale = "sm" | "md" | "lg";
 type TemplateFilter = "all" | "development" | "pipeline";
-
-const DEV_PROJECT_VERSION_DEFAULT = "v0.1.0";
 
 const DEV_PROJECT_STEP_ONE_ADAPT_PROMPT = `Which sections should we keep?
 Which sections should be added?
@@ -563,7 +558,7 @@ function Sidebar({
       rel="noreferrer"
       className="underline hover:text-foreground"
     >
-      v0.1.5
+      v0.1.6
     </a>
   </p>
 
@@ -887,17 +882,13 @@ function TemplateEditor({
     const templateMetaLines = createTemplateMetaLines(activeTemplate, draft);
     const singleDocumentContent = getSingleDocumentContent(activeTemplate, draft);
     const singleDocumentSections = getTemplateExportSections(activeTemplate, draft);
-    const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title, draft.version);
+    const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title);
 
     function handlePipelineExportMarkdown() {
       const currentDraft = latestTemplateDraftRef.current;
       const currentTitle = currentDraft.title.trim() || activeTemplate.name;
       const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
-      const currentFileName = buildTemplateFileName(
-        activeTemplate,
-        currentDraft.title,
-        currentDraft.version,
-      );
+      const currentFileName = buildTemplateFileName(activeTemplate, currentDraft.title);
       const markdown = getTemplateExportMarkdown(activeTemplate, currentDraft, currentTitle, currentMetaLines);
       downloadTextFile(`${currentFileName}.md`, markdown);
     }
@@ -906,11 +897,7 @@ function TemplateEditor({
       const currentDraft = latestTemplateDraftRef.current;
       const currentTitle = currentDraft.title.trim() || activeTemplate.name;
       const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
-      const currentFileName = buildTemplateFileName(
-        activeTemplate,
-        currentDraft.title,
-        currentDraft.version,
-      );
+      const currentFileName = buildTemplateFileName(activeTemplate, currentDraft.title);
       exportPdfDocument(
         currentFileName,
         currentTitle,
@@ -999,19 +986,6 @@ function TemplateEditor({
                     <Input value={activeTemplate.name} readOnly />
                   </Field>
                 ) : null}
-
-                <Field
-                  label="Version"
-                  hint={`Shown in export metadata. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
-                >
-                  <Input
-                    placeholder={DEV_PROJECT_VERSION_DEFAULT}
-                    value={draft.version}
-                    onChange={(event) =>
-                      updateDraft((current) => ({ ...current, version: event.target.value }))
-                    }
-                  />
-                </Field>
 
                 <Field label="Owner" hint="Shown in live preview and exported documents.">
                   <Input
@@ -1119,18 +1093,14 @@ function TemplateEditor({
   const isDevProjectTemplate = activeTemplate.slug === "dev-project-master-document";
   const resolvedTitle = draft.title.trim() || activeTemplate.name;
   const templateMetaLines = createTemplateMetaLines(activeTemplate, draft);
-  const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title, draft.version);
+  const resolvedFileName = buildTemplateFileName(activeTemplate, draft.title);
   const templatePreviewSections = getTemplateExportSections(activeTemplate, draft);
 
   function handleExportMarkdown() {
     const currentDraft = latestTemplateDraftRef.current;
     const currentTitle = currentDraft.title.trim() || activeTemplate.name;
     const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
-    const currentFileName = buildTemplateFileName(
-      activeTemplate,
-      currentDraft.title,
-      currentDraft.version,
-    );
+    const currentFileName = buildTemplateFileName(activeTemplate, currentDraft.title);
     const markdown = getTemplateExportMarkdown(activeTemplate, currentDraft, currentTitle, currentMetaLines);
     downloadTextFile(`${currentFileName}.md`, markdown);
   }
@@ -1139,11 +1109,7 @@ function TemplateEditor({
     const currentDraft = latestTemplateDraftRef.current;
     const currentTitle = currentDraft.title.trim() || activeTemplate.name;
     const currentMetaLines = createTemplateMetaLines(activeTemplate, currentDraft);
-    const currentFileName = buildTemplateFileName(
-      activeTemplate,
-      currentDraft.title,
-      currentDraft.version,
-    );
+    const currentFileName = buildTemplateFileName(activeTemplate, currentDraft.title);
     exportPdfDocument(
       currentFileName,
       currentTitle,
@@ -1551,19 +1517,6 @@ function TemplateEditor({
                 <Input value={activeTemplate.name} readOnly />
               </Field>
 
-              <Field
-                label="Version"
-                hint={`Shown in live preview and export. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
-              >
-                <Input
-                  placeholder={DEV_PROJECT_VERSION_DEFAULT}
-                  value={draft.version}
-                  onChange={(event) =>
-                    updateDraft((current) => ({ ...current, version: event.target.value }))
-                  }
-                />
-              </Field>
-
               <Field label="Owner" hint="Shown in live preview and exported documents.">
                 <Input
                   placeholder="Owner"
@@ -1727,7 +1680,7 @@ function VibeCodingPage({
     startResize,
   } = usePanelWorkspace(panelIds);
   const resolvedTitle = normalizedDraft.title.trim() || "Shipkit Build System";
-  const resolvedFileName = buildVibeCodingFileName(normalizedDraft.title, normalizedDraft.version);
+  const resolvedFileName = buildVibeCodingFileName(normalizedDraft.title);
   const vibeMetaLines = createVibeCodingMetaLines(normalizedDraft);
   const previewSections = getVibeCodingExportSections(normalizedDraft);
 
@@ -1811,14 +1764,14 @@ function VibeCodingPage({
     const currentDraft = latestVibeCodingDraftRef.current;
     const currentTitle = currentDraft.title.trim() || "Shipkit Build System";
     const markdown = getVibeCodingExportMarkdown(currentDraft, currentTitle);
-    const currentFileName = buildVibeCodingFileName(currentDraft.title, currentDraft.version);
+    const currentFileName = buildVibeCodingFileName(currentDraft.title);
     downloadTextFile(`${currentFileName}.md`, markdown);
   }
 
   function handleExportPdf() {
     const currentDraft = latestVibeCodingDraftRef.current;
     const currentTitle = currentDraft.title.trim() || "Shipkit Build System";
-    const currentFileName = buildVibeCodingFileName(currentDraft.title, currentDraft.version);
+    const currentFileName = buildVibeCodingFileName(currentDraft.title);
     exportPdfDocument(
       currentFileName,
       currentTitle,
@@ -2271,22 +2224,6 @@ function VibeCodingPage({
                 <Input value="Shipkit Build System" readOnly />
               </Field>
 
-              <Field
-                label="Version"
-                hint={`Shown in live preview and export. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
-              >
-                <Input
-                  placeholder={DEV_PROJECT_VERSION_DEFAULT}
-                  value={normalizedDraft.version}
-                  onChange={(event) =>
-                    applyVibeCodingDraft((current) => ({
-                      ...current,
-                      version: event.target.value,
-                    }))
-                  }
-                />
-              </Field>
-
               <Field label="Owner" hint="Shown in live preview and exported documents.">
                 <Input
                   placeholder="Owner"
@@ -2476,7 +2413,7 @@ function CodeReviewPage({
     startResize,
   } = usePanelWorkspace(panelIds);
   const resolvedTitle = normalizedDraft.title.trim() || "Code Review Document";
-  const resolvedFileName = buildCodeReviewFileName(normalizedDraft.title, normalizedDraft.version);
+  const resolvedFileName = buildCodeReviewFileName(normalizedDraft.title);
   const reviewMetaLines = createCodeReviewMetaLines(normalizedDraft);
 
   function applyCodeReviewDraft(updater: (current: CodeReviewDraft) => CodeReviewDraft) {
@@ -2530,7 +2467,7 @@ function CodeReviewPage({
   function handleExportMarkdown() {
     const currentDraft = latestCodeReviewDraftRef.current;
     const currentTitle = currentDraft.title.trim() || "Code Review Document";
-    const currentFileName = buildCodeReviewFileName(currentDraft.title, currentDraft.version);
+    const currentFileName = buildCodeReviewFileName(currentDraft.title);
     const currentMetaLines = createCodeReviewMetaLines(currentDraft);
     const markdown = generateCodeReviewMarkdown(currentTitle, currentDraft.sections, currentMetaLines);
     downloadTextFile(`${currentFileName}.md`, markdown);
@@ -2539,7 +2476,7 @@ function CodeReviewPage({
   function handleExportPdf() {
     const currentDraft = latestCodeReviewDraftRef.current;
     const currentTitle = currentDraft.title.trim() || "Code Review Document";
-    const currentFileName = buildCodeReviewFileName(currentDraft.title, currentDraft.version);
+    const currentFileName = buildCodeReviewFileName(currentDraft.title);
     const currentMetaLines = createCodeReviewMetaLines(currentDraft);
     exportPdfDocument(
       currentFileName,
@@ -2817,22 +2754,6 @@ function CodeReviewPage({
                 hint="Fixed document label used in live preview and exported documents."
               >
                 <Input value="Code Review" readOnly />
-              </Field>
-
-              <Field
-                label="Version"
-                hint={`Shown in live preview and export. Defaults to ${DEV_PROJECT_VERSION_DEFAULT} if left empty.`}
-              >
-                <Input
-                  placeholder={DEV_PROJECT_VERSION_DEFAULT}
-                  value={normalizedDraft.version}
-                  onChange={(event) =>
-                    applyCodeReviewDraft((current) => ({
-                      ...current,
-                      version: event.target.value,
-                    }))
-                  }
-                />
               </Field>
 
               <Field label="Owner" hint="Shown in live preview and exported documents.">
@@ -4319,7 +4240,6 @@ function createTemplateDraft(template: TemplateDefinition): TemplateDraft {
 
     return {
       title: template.name,
-      version: "",
       owner: "",
       created: getTodayDateString(),
       lastUpdated: getTodayDateString(),
@@ -4333,7 +4253,6 @@ function createTemplateDraft(template: TemplateDefinition): TemplateDraft {
 
   return {
     title: "",
-    version: "",
     owner: "",
     created: getTodayDateString(),
     lastUpdated: getTodayDateString(),
@@ -4354,7 +4273,6 @@ function createTemplateDraft(template: TemplateDefinition): TemplateDraft {
 function createCodeReviewDraft(): CodeReviewDraft {
   return {
     title: "",
-    version: "",
     owner: "",
     lastChecked: getTodayDateString(),
     fileName: "",
@@ -4395,7 +4313,6 @@ function createVibeCodingStepDraft(step: VibeCodingStepDefinition): VibeCodingSt
 function createVibeCodingDraft(): VibeCodingDraft {
   return {
     title: "",
-    version: "",
     owner: "",
     created: getTodayDateString(),
     lastUpdated: getTodayDateString(),
@@ -4478,7 +4395,6 @@ function normalizeTemplateDraft(template: TemplateDefinition, draft: TemplateDra
     return {
       ...draft,
       title: draft.title || template.name,
-      version: draft.version ?? "",
       owner: draft.owner ?? "",
       created: normalizeDateField(draft.created),
       lastUpdated: normalizeDateField(draft.lastUpdated),
@@ -4498,7 +4414,6 @@ function normalizeTemplateDraft(template: TemplateDefinition, draft: TemplateDra
 
   return {
     ...draft,
-    version: draft.version ?? "",
     owner: draft.owner ?? "",
     created: normalizeDateField(draft.created),
     lastUpdated: normalizeDateField(draft.lastUpdated),
@@ -4543,7 +4458,6 @@ function normalizeVibeCodingDraft(draft: VibeCodingDraft): VibeCodingDraft {
 
   return {
     ...draft,
-    version: draft.version ?? "",
     owner: draft.owner ?? "",
     created: normalizeDateField(draft.created),
     lastUpdated: normalizeDateField(draft.lastUpdated),
@@ -4592,7 +4506,6 @@ function normalizeVibeCodingDraft(draft: VibeCodingDraft): VibeCodingDraft {
 function normalizeCodeReviewDraft(draft: CodeReviewDraft): CodeReviewDraft {
   return {
     ...draft,
-    version: draft.version ?? "",
     owner: draft.owner ?? "",
     lastChecked: normalizeDateField(draft.lastChecked),
     reviewScopePrompt: draft.reviewScopePrompt ?? CODE_REVIEW_SCOPE_PROMPT_DEFAULT,
@@ -4716,7 +4629,6 @@ function normalizeDateField(value?: string) {
 function createTemplateMetaLines(template: TemplateDefinition, draft: TemplateDraft) {
   return [
     `Document: ${template.name}`,
-    `Version: ${resolveTemplateVersion(draft.version)}`,
     `Owner: ${draft.owner.trim() || "N/A"}`,
     `Created: ${normalizeDateField(draft.created)}`,
     `Last updated: ${normalizeDateField(draft.lastUpdated)}`,
@@ -4907,7 +4819,6 @@ function migrateLegacyDocumentContentToSections(
 function createCodeReviewMetaLines(draft: CodeReviewDraft) {
   return [
     "Document: Code Review",
-    `Version: ${resolveTemplateVersion(draft.version)}`,
     `Owner: ${draft.owner.trim() || "N/A"}`,
     `Review date: ${normalizeDateField(draft.lastChecked)}`,
   ];
@@ -4916,7 +4827,6 @@ function createCodeReviewMetaLines(draft: CodeReviewDraft) {
 function createVibeCodingMetaLines(draft: VibeCodingDraft) {
   return [
     "Document: Shipkit Build System",
-    `Version: ${resolveTemplateVersion(draft.version)}`,
     `Owner: ${draft.owner.trim() || "N/A"}`,
     `Created: ${normalizeDateField(draft.created)}`,
     `Last updated: ${normalizeDateField(draft.lastUpdated)}`,
@@ -4940,34 +4850,19 @@ function getVibeCodingStepDocumentLabel(step: Pick<VibeCodingStepDraft, "id" | "
   return step.title.replace(/^Part\s+\d+\s+—\s+/, "").trim() || step.title;
 }
 
-function resolveTemplateVersion(version: string) {
-  return version.trim() || DEV_PROJECT_VERSION_DEFAULT;
-}
-
-function sanitizeVersionSegment(version: string) {
-  return resolveTemplateVersion(version)
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9.-]+/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function buildTemplateFileName(template: TemplateDefinition, projectName: string, version = "") {
+function buildTemplateFileName(template: TemplateDefinition, projectName: string) {
   if (template.slug === "readme-md") {
     return "README";
   }
 
   if (template.slug === "roadmap") {
     const projectSlug = slugify(projectName);
-    const versionSuffix = `-${sanitizeVersionSegment(version)}`;
-    return projectSlug ? `${projectSlug}-roadmap${versionSuffix}` : `roadmap${versionSuffix}`;
+    return projectSlug ? `${projectSlug}-roadmap` : "roadmap";
   }
 
   const prefix = slugify(projectName) || getTemplateDefaultProjectPrefix(template);
   const lockedSuffix = getTemplateLockedSuffix(template);
-  const versionSuffix = `-${sanitizeVersionSegment(version)}`;
-  return `${prefix}-${lockedSuffix}${versionSuffix}`;
+  return `${prefix}-${lockedSuffix}`;
 }
 
 function getTemplateDefaultProjectPrefix(template: TemplateDefinition) {
@@ -4990,20 +4885,20 @@ function getTemplateLockedSuffix(template: TemplateDefinition) {
   return "master-project-document";
 }
 
-function buildCodeReviewFileName(projectName: string, version = "") {
+function buildCodeReviewFileName(projectName: string) {
   const projectSlug = slugify(projectName);
   const prefix = projectSlug ? `${projectSlug}-code-review` : "code-review";
-  return `${prefix}-${sanitizeVersionSegment(version)}`;
+  return prefix;
 }
 
 function buildHelpDocFileName(title: string, fallback: string) {
   return slugify(title) || fallback;
 }
 
-function buildVibeCodingFileName(projectName: string, version = "") {
+function buildVibeCodingFileName(projectName: string) {
   const projectSlug = slugify(projectName);
   const prefix = projectSlug ? `${projectSlug}-shipkit-build-system` : "shipkit-build-system";
-  return `${prefix}-${sanitizeVersionSegment(version)}`;
+  return prefix;
 }
 
 function buildVibeCodingArtifactFileName(step: Pick<VibeCodingStepDraft, "artifactPrefix">, projectName: string) {
@@ -5017,7 +4912,6 @@ function getVibeCodingArtifactMarkdown(step: VibeCodingStepDraft, draft: VibeCod
   return formatMarkdownDocument(documentLabel, step.notes.trim() || step.outputPlaceholder, [
     `Project: ${draft.title.trim() || "Untitled project"}`,
     `Document: ${documentLabel}`,
-    `Version: ${resolveTemplateVersion(draft.version)}`,
     `Owner: ${draft.owner.trim() || "N/A"}`,
     `Created: ${normalizeDateField(draft.created)}`,
     `Last updated: ${normalizeDateField(draft.lastUpdated)}`,
