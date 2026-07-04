@@ -4882,7 +4882,7 @@ function getTemplateLockedSuffix(template: TemplateDefinition) {
     return "requirements-specification";
   }
 
-  return "master-project-document";
+  return "project-master-document";
 }
 
 function buildCodeReviewFileName(projectName: string) {
