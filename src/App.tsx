@@ -558,7 +558,7 @@ function Sidebar({
       rel="noreferrer"
       className="underline hover:text-foreground"
     >
-      v0.1.6
+      v0.1.7
     </a>
   </p>
 
@@ -4882,7 +4882,7 @@ function getTemplateLockedSuffix(template: TemplateDefinition) {
     return "requirements-specification";
   }
 
-  return "master-project-document";
+  return "project-master-document";
 }
 
 function buildCodeReviewFileName(projectName: string) {
