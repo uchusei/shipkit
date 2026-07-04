@@ -558,7 +558,7 @@ function Sidebar({
       rel="noreferrer"
       className="underline hover:text-foreground"
     >
-      v0.1.6
+      v0.1.7
     </a>
   </p>
 
