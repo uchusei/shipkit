@@ -1764,14 +1764,14 @@ function VibeCodingPage({
     const currentDraft = latestVibeCodingDraftRef.current;
     const currentTitle = currentDraft.title.trim() || "Shipkit Build System";
     const markdown = getVibeCodingExportMarkdown(currentDraft, currentTitle);
-    const currentFileName = buildVibeCodingFileName(currentDraft.title, currentDraft.version);
+    const currentFileName = buildVibeCodingFileName(currentDraft.title);
     downloadTextFile(`${currentFileName}.md`, markdown);
   }
 
   function handleExportPdf() {
     const currentDraft = latestVibeCodingDraftRef.current;
     const currentTitle = currentDraft.title.trim() || "Shipkit Build System";
-    const currentFileName = buildVibeCodingFileName(currentDraft.title, currentDraft.version);
+    const currentFileName = buildVibeCodingFileName(currentDraft.title);
     exportPdfDocument(
       currentFileName,
       currentTitle,
